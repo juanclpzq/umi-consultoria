@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 
@@ -89,7 +89,7 @@ const consultingTypes = [
 const ConsultingCarousel = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
-  const [hoveredItem, setHoveredItem] = useState(null);
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const carouselRef = useRef(null);
   const transitionInProgress = useRef(false);
 
@@ -106,14 +106,14 @@ const ConsultingCarousel = () => {
   };
 
   // Navegar al siguiente
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     if (transitionInProgress.current) return;
     transitionInProgress.current = true;
     setCurrentIndex((prevIndex) => (prevIndex + 1) % consultingTypes.length);
     setTimeout(() => {
       transitionInProgress.current = false;
     }, 500); // Duración de la transición
-  };
+  }, []);
 
   // Reproducción automática infinita
   useEffect(() => {
@@ -157,7 +157,7 @@ const ConsultingCarousel = () => {
   const carouselItems = getCarouselItems();
 
   // Obtener el tamaño y posición basados en la posición relativa al central
-  const getItemStyle = (position) => {
+  const getItemStyle = (position: number) => {
     // Variables para posición, tamaño y visibilidad
     let width, height, zIndex, x, opacity;
 
