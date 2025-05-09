@@ -117,7 +117,7 @@ const ConsultingCarousel = () => {
 
   // Reproducción automática infinita
   useEffect(() => {
-    let timerId;
+    let timerId: NodeJS.Timeout | undefined;
 
     if (isPlaying) {
       timerId = setInterval(() => {
@@ -128,7 +128,7 @@ const ConsultingCarousel = () => {
     return () => {
       if (timerId) clearInterval(timerId);
     };
-  }, [isPlaying, currentIndex]);
+  }, [isPlaying, handleNext]);
 
   // Pausar/reanudar reproducción
   const togglePlay = () => {
