@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import ProgressBar from "./ProgressBar";
+import Image from "next/image";
 
 interface ContactFormProps {
   onSubmit: (contactInfo: ContactInfo) => void;
@@ -98,10 +99,12 @@ const ContactForm = ({ onSubmit }: ContactFormProps) => {
           <div className="bg-gray-50 p-4 rounded-lg">
             <div className="flex items-center mb-2">
               <div className="mr-3">
-                <img
+                <Image
                   src="/api/placeholder/50/50"
                   alt="CEO"
-                  className="w-10 h-10 rounded-full"
+                  width={50}
+                  height={50}
+                  className="rounded-full"
                 />
               </div>
               <div>
@@ -112,9 +115,11 @@ const ContactForm = ({ onSubmit }: ContactFormProps) => {
               </div>
             </div>
             <p className="text-sm text-gray-600 italic">
-              "Nuestros clientes que implementaron las recomendaciones de este
-              diagnóstico vieron un aumento promedio del 24% en eficiencia
-              operativa en los primeros 3 meses."
+              <p className="text-sm text-gray-600 italic">
+                &quot;Nuestros clientes que implementaron las recomendaciones de
+                este diagnóstico vieron un aumento promedio del 24% en
+                eficiencia operativa en los primeros 3 meses.&quot;
+              </p>
             </p>
           </div>
         </div>
