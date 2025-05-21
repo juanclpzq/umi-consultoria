@@ -102,7 +102,7 @@ const Testimonials = () => {
           />
         </div>
 
-        <div className="mt-12 text-center">
+        {/* <div className="mt-12 text-center">
           <Link
             href="#contacto"
             className="btn-secondary inline-flex items-center gap-2"
@@ -124,7 +124,7 @@ const Testimonials = () => {
               />
             </svg>
           </Link>
-        </div>
+        </div> */}
       </div>
     </section>
   );

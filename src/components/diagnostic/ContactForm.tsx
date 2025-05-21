@@ -96,7 +96,7 @@ const ContactForm = ({ onSubmit }: ContactFormProps) => {
             </div>
           </div>
 
-          <div className="bg-gray-50 p-4 rounded-lg">
+          {/* <div className="bg-gray-50 p-4 rounded-lg">
             <div className="flex items-center mb-2">
               <div className="mr-3">
                 <Image
@@ -121,7 +121,7 @@ const ContactForm = ({ onSubmit }: ContactFormProps) => {
                 eficiencia operativa en los primeros 3 meses.&quot;
               </p>
             </p>
-          </div>
+          </div> */}
         </div>
 
         <div>
