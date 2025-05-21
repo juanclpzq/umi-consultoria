@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import ProgressBar from "./ProgressBar";
-import Image from "next/image";
+// import Image from "next/image";
 
 interface ContactFormProps {
   onSubmit: (contactInfo: ContactInfo) => void;
