@@ -1,5 +1,4 @@
 import React from "react";
-import Image from "next/image";
 
 const SocialProof = () => (
   <div className="mt-8 pt-6 border-t border-gray-200">
@@ -24,21 +23,15 @@ const SocialProof = () => (
     <div className="mt-6 flex justify-center">
       <div className="flex items-center overflow-hidden">
         <div className="flex -space-x-2">
-          <Image
-            src="/api/placeholder/40/40"
-            alt="Usuario"
-            className="w-8 h-8 rounded-full border-2 border-white"
-          />
-          <Image
-            src="/api/placeholder/40/40"
-            alt="Usuario"
-            className="w-8 h-8 rounded-full border-2 border-white"
-          />
-          <Image
-            src="/api/placeholder/40/40"
-            alt="Usuario"
-            className="w-8 h-8 rounded-full border-2 border-white"
-          />
+          <div className="w-8 h-8 rounded-full border-2 border-white bg-gradient-to-r from-blue-400 to-blue-600 flex items-center justify-center text-white text-xs font-bold">
+            U1
+          </div>
+          <div className="w-8 h-8 rounded-full border-2 border-white bg-gradient-to-r from-green-400 to-green-600 flex items-center justify-center text-white text-xs font-bold">
+            U2
+          </div>
+          <div className="w-8 h-8 rounded-full border-2 border-white bg-gradient-to-r from-purple-400 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
+            U3
+          </div>
         </div>
         <div className="ml-2">
           <p className="text-xs text-gray-500">

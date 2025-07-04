@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AnimatePresence } from "framer-motion";
 import Welcome from "./Welcome";
 import QuestionStep, { Question } from "./QuestionStep";
@@ -78,6 +78,14 @@ const questions: Question[] = [
 // Tipos de pasos del quiz
 type QuizStage = "welcome" | "questions" | "snapshot" | "contact" | "result";
 
+// Estados del procesamiento de diagnóstico
+type DiagnosticStatus = "idle" | "sending" | "success" | "error";
+
+interface DiagnosticState {
+  status: DiagnosticStatus;
+  message: string;
+}
+
 const DiagnosticQuiz = () => {
   // Estados para manejar el quiz
   const [stage, setStage] = useState<QuizStage>("welcome");
@@ -85,6 +93,18 @@ const DiagnosticQuiz = () => {
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(false);
   const [contactInfo, setContactInfo] = useState<ContactInfo | null>(null);
+  const [startTime, setStartTime] = useState<number>(Date.now());
+  const [diagnosticState, setDiagnosticState] = useState<DiagnosticState>({
+    status: "idle",
+    message: "",
+  });
+
+  // Inicializar tiempo de inicio cuando comience el quiz
+  useEffect(() => {
+    if (stage === "questions" && startTime === Date.now()) {
+      setStartTime(Date.now());
+    }
+  }, [stage]);
 
   // Manejar selección de opción en las preguntas
   const handleOptionSelect = (value: string) => {
@@ -116,19 +136,84 @@ const DiagnosticQuiz = () => {
     }
   };
 
+  // Función para enviar diagnóstico completo por email
+  const sendDiagnosticEmail = async (contactData: ContactInfo) => {
+    const completionTime = Math.round((Date.now() - startTime) / 1000); // en segundos
+
+    const diagnosticData = {
+      answers,
+      score: getScore(),
+      levelName: getLevelName(),
+      contactInfo: contactData,
+      completionTime,
+      timestamp: new Date().toISOString(),
+    };
+
+    try {
+      const response = await fetch("/api/diagnostic", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(diagnosticData),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setDiagnosticState({
+          status: "success",
+          message: "Diagnóstico enviado exitosamente. Revisa tu email.",
+        });
+
+        // Tracking para analytics si está disponible
+        if (typeof window !== "undefined" && (window as any).gtag) {
+          (window as any).gtag("event", "diagnostic_completed", {
+            event_category: "Diagnostic",
+            event_label: getLevelName(),
+            value: getScore(),
+          });
+        }
+
+        return true;
+      } else {
+        setDiagnosticState({
+          status: "error",
+          message:
+            result.error || "Error al enviar diagnóstico. Inténtalo de nuevo.",
+        });
+        return false;
+      }
+    } catch (error) {
+      console.error("Error al enviar diagnóstico:", error);
+      setDiagnosticState({
+        status: "error",
+        message:
+          "Error de conexión. Verifica tu internet e inténtalo de nuevo.",
+      });
+      return false;
+    }
+  };
+
   // Manejar envío del formulario de contacto
-  const handleContactSubmit = (contactData: ContactInfo) => {
+  const handleContactSubmit = async (contactData: ContactInfo) => {
     setLoading(true);
     setContactInfo(contactData);
+    setDiagnosticState({ status: "sending", message: "" });
 
-    // Simular procesamiento y avanzar al resultado final
-    setTimeout(() => {
+    // Enviar diagnóstico por email
+    const emailSent = await sendDiagnosticEmail(contactData);
+
+    if (emailSent) {
+      // Si el email se envió correctamente, avanzar al resultado final
+      setTimeout(() => {
+        setLoading(false);
+        setStage("result");
+      }, 1000);
+    } else {
+      // Si hubo error, mantener en el formulario para reintentar
       setLoading(false);
-      setStage("result");
-    }, 1500);
-
-    // En una implementación real, aquí enviarías los datos a un servidor/CRM
-    console.log("Formulario enviado:", contactData);
+    }
   };
 
   // Reiniciar todo el quiz
@@ -137,6 +222,8 @@ const DiagnosticQuiz = () => {
     setCurrentQuestion(1);
     setAnswers({});
     setContactInfo(null);
+    setStartTime(Date.now());
+    setDiagnosticState({ status: "idle", message: "" });
   };
 
   // Calcular puntuación para mostrar en el resultado
@@ -308,55 +395,117 @@ const DiagnosticQuiz = () => {
           <p className="text-lg text-gray-600">
             {stage === "questions"
               ? "Analizando tus respuestas..."
-              : "Preparando tu informe personalizado..."}
+              : diagnosticState.status === "sending"
+                ? "Enviando tu diagnóstico personalizado..."
+                : "Preparando tu informe personalizado..."}
           </p>
         </div>
       ) : (
-        <AnimatePresence mode="wait">
-          {stage === "welcome" && (
-            <Welcome onStart={() => setStage("questions")} />
+        <div>
+          {/* Mensaje de estado del diagnóstico */}
+          {diagnosticState.message && (
+            <div
+              className={`p-4 rounded-lg border mb-6 ${
+                diagnosticState.status === "success"
+                  ? "text-green-600 bg-green-50 border-green-200"
+                  : diagnosticState.status === "error"
+                    ? "text-red-600 bg-red-50 border-red-200"
+                    : "text-blue-600 bg-blue-50 border-blue-200"
+              }`}
+            >
+              <div className="flex items-center">
+                {diagnosticState.status === "success" ? (
+                  <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24">
+                    <path
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                ) : diagnosticState.status === "error" ? (
+                  <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24">
+                    <path
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24">
+                    <path
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                )}
+                <span className="text-sm font-medium">
+                  {diagnosticState.message}
+                </span>
+              </div>
+            </div>
           )}
 
-          {stage === "questions" && (
-            <QuestionStep
-              question={questions[currentQuestion - 1]}
-              currentQuestion={currentQuestion}
-              totalQuestions={questions.length}
-              selectedValue={answers[currentQuestion] || null}
-              onSelect={handleOptionSelect}
-              onPrevious={handlePrevious}
-            />
-          )}
+          <AnimatePresence mode="wait">
+            {stage === "welcome" && (
+              <Welcome onStart={() => setStage("questions")} />
+            )}
 
-          {stage === "snapshot" && (
-            <SnapshotResult
-              score={getScore()}
-              levelName={getLevelName()}
-              description={getSnapshotDescription()}
-              primaryOpportunity={getPrimaryOpportunity()}
-              opportunityPercentage={getOpportunityPercentage()}
-              onContinue={() => setStage("contact")}
-              onReset={resetQuiz}
-            />
-          )}
+            {stage === "questions" && (
+              <QuestionStep
+                question={questions[currentQuestion - 1]}
+                currentQuestion={currentQuestion}
+                totalQuestions={questions.length}
+                selectedValue={answers[currentQuestion] || null}
+                onSelect={handleOptionSelect}
+                onPrevious={handlePrevious}
+              />
+            )}
 
-          {stage === "contact" && (
-            <ContactForm onSubmit={handleContactSubmit} />
-          )}
+            {stage === "snapshot" && (
+              <SnapshotResult
+                score={getScore()}
+                levelName={getLevelName()}
+                description={getSnapshotDescription()}
+                primaryOpportunity={getPrimaryOpportunity()}
+                opportunityPercentage={getOpportunityPercentage()}
+                onContinue={() => setStage("contact")}
+                onReset={resetQuiz}
+              />
+            )}
 
-          {stage === "result" && contactInfo && (
-            <FullResult
-              title={`Tu estrategia personalizada: Nivel ${getLevelName()}`}
-              description={getSnapshotDescription()}
-              recommendationPoints={getRecommendations()}
-              contactInfo={{
-                name: contactInfo.name,
-                email: contactInfo.email,
-              }}
-              onReset={resetQuiz}
-            />
-          )}
-        </AnimatePresence>
+            {stage === "contact" && (
+              <ContactForm
+                onSubmit={handleContactSubmit}
+                isLoading={diagnosticState.status === "sending"}
+                errorMessage={
+                  diagnosticState.status === "error"
+                    ? diagnosticState.message
+                    : undefined
+                }
+              />
+            )}
+
+            {stage === "result" && contactInfo && (
+              <FullResult
+                title={`Tu estrategia personalizada: Nivel ${getLevelName()}`}
+                description={getSnapshotDescription()}
+                recommendationPoints={getRecommendations()}
+                contactInfo={{
+                  name: contactInfo.name,
+                  email: contactInfo.email,
+                }}
+                onReset={resetQuiz}
+              />
+            )}
+          </AnimatePresence>
+        </div>
       )}
     </div>
   );
