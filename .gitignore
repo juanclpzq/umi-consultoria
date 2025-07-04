@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# Allow .env.example and .env.production templates
+!.env.example
+!.env.production
 
 # vercel
 .vercel
@@ -39,3 +42,110 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# =====================================================
+# 📧 EMAIL SYSTEM ADDITIONS
+# =====================================================
+
+# 🗄️ Database files
+/data/
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+
+# 📊 Logs and monitoring
+logs/
+*.log
+/logs/
+email-logs/
+system-logs/
+
+# 📈 Metrics and analytics
+metrics/
+analytics/
+*.metrics
+performance.json
+
+# 🔐 Security and credentials
+secrets/
+certificates/
+*.key
+*.crt
+*.p12
+*.pfx
+
+# 📧 Email templates cache (if generated)
+.email-cache/
+template-cache/
+
+# 🧪 Testing artifacts
+test-emails/
+test-data/
+mock-data/
+*.test.db
+
+# 📦 Backup files
+backups/
+*.backup
+*.bak
+dump-*
+
+# 🔄 Temporary files
+tmp/
+temp/
+.tmp/
+.temp/
+
+# 📱 OS specific
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+
+# Linux
+*~
+.nfs*
+
+# =====================================================
+# 🚀 DEPLOYMENT SPECIFIC
+# =====================================================
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+.docker/
+
+# CI/CD
+.github/workflows/secrets.yml
+deployment-config.local.yml
+
+# =====================================================
+# 💡 ALLOWED FILES (IMPORTANT FOR TEAM)
+# =====================================================
+# These files SHOULD be committed:
+# - .env.example (template for developers)
+# - .env.production (template, no real values)
+# - README.md
+# - package.json / package-lock.json
+# - All source code in /src/
+# - Public assets in /public/
+# - Documentation files
+
+# =====================================================
