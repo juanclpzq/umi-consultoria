@@ -4,7 +4,8 @@ import { existsSync, unlinkSync, readdirSync } from "fs";
 import path from "path";
 
 // Configurar variables de entorno para tests
-process.env.NODE_ENV = "test";
+// Usar Object.assign para evitar el error de read-only
+Object.assign(process.env, { NODE_ENV: "test" });
 process.env.DATABASE_PATH = "./data/test-leads.db";
 
 // Función para limpiar archivos de test de base de datos
@@ -18,8 +19,10 @@ const cleanTestDatabases = () => {
         const filePath = path.join(dataDir, file);
         try {
           unlinkSync(filePath);
-        } catch (error) {
+          console.log(`🧹 Archivo de test eliminado: ${file}`);
+        } catch {
           // Ignorar errores de archivos que no se pueden eliminar
+          console.warn(`⚠️ No se pudo eliminar: ${file}`);
         }
       }
     });
@@ -28,11 +31,13 @@ const cleanTestDatabases = () => {
 
 // Setup antes de todos los tests
 beforeAll(() => {
+  console.log("🚀 Iniciando configuración de tests...");
   cleanTestDatabases();
 });
 
 // Cleanup después de todos los tests
 afterAll(() => {
+  console.log("🧹 Limpiando después de todos los tests...");
   cleanTestDatabases();
 });
 

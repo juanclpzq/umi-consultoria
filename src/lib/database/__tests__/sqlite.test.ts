@@ -7,7 +7,7 @@ import {
   afterEach,
   jest,
 } from "@jest/globals";
-import { LeadDatabase, LeadData } from "../sqlite";
+import { LeadDatabase, LeadData, DiagnosticData } from "../sqlite";
 import { existsSync, unlinkSync } from "fs";
 import path from "path";
 
@@ -66,13 +66,17 @@ describe("LeadDatabase", () => {
       diagnosticData: {
         score: 75,
         level: "Intermedio",
+        recommendations: [
+          "Implementar mejores prácticas de recolección de datos",
+          "Crear dashboards más intuitivos",
+        ],
         areas: {
           dataCollection: 70,
           analysis: 80,
           visualization: 75,
           decisionMaking: 75,
         },
-      },
+      } as DiagnosticData,
     };
 
     test("Debe crear un nuevo lead", () => {
@@ -111,7 +115,12 @@ describe("LeadDatabase", () => {
         diagnosticData: {
           ...testLead.diagnosticData,
           score: 85,
-        },
+          level: "Avanzado",
+          recommendations: [
+            "Implementar análisis predictivo",
+            "Automatizar procesos de reporting",
+          ],
+        } as DiagnosticData,
       };
 
       const result = database.upsertLead(updatedLead);
@@ -134,7 +143,19 @@ describe("LeadDatabase", () => {
       diagnosticDate: "2025-01-01",
       emailsSent: [],
       sequencePaused: false,
-      diagnosticData: { score: 60 },
+      diagnosticData: {
+        score: 60,
+        level: "Básico",
+        recommendations: [
+          "Establecer procesos básicos de recolección de datos",
+        ],
+        areas: {
+          dataCollection: 50,
+          analysis: 60,
+          visualization: 65,
+          decisionMaking: 65,
+        },
+      } as DiagnosticData,
     };
 
     beforeEach(() => {
@@ -177,8 +198,8 @@ describe("LeadDatabase", () => {
 
       const logs = database.getLeadEmailLogs("test-lead-email");
       expect(logs).toHaveLength(2);
-      expect(logs[0].templateName).toBeDefined();
-      expect(logs[0].sequenceDay).toBeDefined();
+      expect(logs[0]?.templateName).toBeDefined();
+      expect(logs[0]?.sequenceDay).toBeDefined();
     });
   });
 
@@ -194,7 +215,17 @@ describe("LeadDatabase", () => {
         diagnosticDate: threeDaysAgo.toISOString(),
         emailsSent: [],
         sequencePaused: false,
-        diagnosticData: { score: 60 },
+        diagnosticData: {
+          score: 60,
+          level: "Básico",
+          recommendations: ["Mejorar la recolección de datos"],
+          areas: {
+            dataCollection: 60,
+            analysis: 60,
+            visualization: 60,
+            decisionMaking: 60,
+          },
+        } as DiagnosticData,
       };
 
       database.upsertLead(testLead);
@@ -221,14 +252,28 @@ describe("LeadDatabase", () => {
         diagnosticDate: twoDaysAgo.toISOString(),
         emailsSent: [],
         sequencePaused: false,
-        diagnosticData: { score: 60 },
+        diagnosticData: {
+          score: 60,
+          level: "Básico",
+          recommendations: ["Establecer métricas básicas"],
+          areas: {
+            dataCollection: 60,
+            analysis: 60,
+            visualization: 60,
+            decisionMaking: 60,
+          },
+        } as DiagnosticData,
       };
 
       database.upsertLead(testLead);
 
       const pendingLeads = database.getLeadsPendingEmails();
       expect(pendingLeads.length).toBeGreaterThan(0);
-      expect(pendingLeads[0].daysElapsed).toBe(2);
+
+      const pendingLead = pendingLeads.find(
+        (lead) => lead.id === "test-lead-pending"
+      );
+      expect(pendingLead?.daysElapsed).toBe(2);
     });
 
     test("No debe incluir leads pausados", () => {
@@ -239,7 +284,17 @@ describe("LeadDatabase", () => {
         diagnosticDate: "2025-01-01",
         emailsSent: [],
         sequencePaused: true,
-        diagnosticData: { score: 60 },
+        diagnosticData: {
+          score: 60,
+          level: "Básico",
+          recommendations: ["Recomendación básica"],
+          areas: {
+            dataCollection: 60,
+            analysis: 60,
+            visualization: 60,
+            decisionMaking: 60,
+          },
+        } as DiagnosticData,
       };
 
       database.upsertLead(testLead);
@@ -260,7 +315,17 @@ describe("LeadDatabase", () => {
       diagnosticDate: "2025-01-01",
       emailsSent: [],
       sequencePaused: false,
-      diagnosticData: { score: 60 },
+      diagnosticData: {
+        score: 60,
+        level: "Básico",
+        recommendations: ["Recomendación para pausar"],
+        areas: {
+          dataCollection: 60,
+          analysis: 60,
+          visualization: 60,
+          decisionMaking: 60,
+        },
+      } as DiagnosticData,
     };
 
     beforeEach(() => {
@@ -308,7 +373,17 @@ describe("LeadDatabase", () => {
         diagnosticDate: "2025-01-01",
         emailsSent: [],
         sequencePaused: false,
-        diagnosticData: { score: 60 },
+        diagnosticData: {
+          score: 60,
+          level: "Básico",
+          recommendations: ["Recomendación 1"],
+          areas: {
+            dataCollection: 60,
+            analysis: 60,
+            visualization: 60,
+            decisionMaking: 60,
+          },
+        } as DiagnosticData,
       };
 
       const testLead2: LeadData = {
@@ -318,7 +393,17 @@ describe("LeadDatabase", () => {
         diagnosticDate: "2025-01-01",
         emailsSent: [],
         sequencePaused: true,
-        diagnosticData: { score: 80 },
+        diagnosticData: {
+          score: 80,
+          level: "Avanzado",
+          recommendations: ["Recomendación 2"],
+          areas: {
+            dataCollection: 80,
+            analysis: 80,
+            visualization: 80,
+            decisionMaking: 80,
+          },
+        } as DiagnosticData,
       };
 
       database.upsertLead(testLead1);

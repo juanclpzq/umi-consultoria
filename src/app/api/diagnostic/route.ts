@@ -1,12 +1,15 @@
 // src/app/api/diagnostic/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { DiagnosticIntegration } from "@/lib/integration/diagnosticTrigger";
+import {
+  getDiagnosticTrigger,
+  DiagnosticSubmission,
+} from "@/lib/integration/diagnosticTrigger";
 
 interface DiagnosticRequest {
   email: string;
   name: string;
   company?: string;
-  responses: Record<string, any>;
+  responses: Record<string, string | number>;
 }
 
 interface DiagnosticResponse {
@@ -22,8 +25,6 @@ interface DiagnosticResponse {
 }
 
 export async function POST(request: NextRequest) {
-  let diagnosticIntegration: DiagnosticIntegration | null = null;
-
   try {
     const body: DiagnosticRequest = await request.json();
 
@@ -47,96 +48,125 @@ export async function POST(request: NextRequest) {
     // Procesar diagnóstico (lógica existente)
     const diagnosticResult = calculateDiagnostic(body.responses);
 
-    // Inicializar integración con base de datos
-    diagnosticIntegration = new DiagnosticIntegration();
-
-    // Procesar lead y manejar secuencia de emails
-    const leadProcessing = await diagnosticIntegration.processDiagnostic({
+    // Crear submission para el nuevo API (compatible con exactOptionalPropertyTypes)
+    const submission: DiagnosticSubmission = {
       email: body.email,
       name: body.name,
-      company: body.company,
-      diagnosticResult,
+      diagnosticResult: {
+        score: diagnosticResult.score,
+        level: diagnosticResult.level,
+        recommendations: diagnosticResult.recommendations,
+        areas: diagnosticResult.areas,
+      },
       submissionDate: new Date().toISOString(),
-    });
+    };
+
+    // Añadir company solo si existe
+    if (body.company) {
+      submission.company = body.company;
+    }
+
+    // Procesar con el diagnostic trigger
+    const diagnosticTrigger = getDiagnosticTrigger();
+    const processResult = await diagnosticTrigger.processDiagnostic(submission);
 
     console.log(`✅ Diagnóstico procesado para ${body.email}:`, {
-      isNewLead: leadProcessing.isNewLead,
-      emailsSent: leadProcessing.emailsToSend.length,
-      message: leadProcessing.message,
+      isNewLead: processResult.isNewLead,
+      level: diagnosticResult.level,
+      score: diagnosticResult.score,
+      emailsToSend: processResult.emailsToSend.length,
     });
 
-    // Responder con resultado del diagnóstico y estado del procesamiento
+    // Responder con resultado del diagnóstico
     return NextResponse.json({
       // Resultado del diagnóstico (visible para el usuario)
       diagnostic: diagnosticResult,
 
       // Información del procesamiento (para debugging)
       processing: {
-        leadId: leadProcessing.leadId,
-        isNewLead: leadProcessing.isNewLead,
-        emailsSent: leadProcessing.emailsToSend.length,
-        message: leadProcessing.message,
+        success: true,
+        isNewLead: processResult.isNewLead,
+        leadId: processResult.leadId,
+        emailsScheduled: processResult.emailsToSend.length,
+        level: diagnosticResult.level,
+        timestamp: new Date().toISOString(),
       },
     });
   } catch (error) {
     console.error("❌ Error en API de diagnóstico:", error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Error desconocido";
 
     return NextResponse.json(
       {
         error: "Error interno del servidor",
         details:
-          process.env.NODE_ENV === "development" ? error.message : undefined,
+          process.env.NODE_ENV === "development" ? errorMessage : undefined,
       },
       { status: 500 }
     );
-  } finally {
-    // Cerrar conexión a base de datos
-    if (diagnosticIntegration) {
-      diagnosticIntegration.close();
-    }
   }
 }
 
 // GET endpoint para métricas (opcional)
 export async function GET(request: NextRequest) {
-  let diagnosticIntegration: DiagnosticIntegration | null = null;
-
   try {
     const url = new URL(request.url);
     const action = url.searchParams.get("action");
 
-    diagnosticIntegration = new DiagnosticIntegration();
+    const diagnosticTrigger = getDiagnosticTrigger();
 
     switch (action) {
       case "metrics":
-        const metrics = diagnosticIntegration.getMetrics();
-        return NextResponse.json({ metrics });
+        const metrics = diagnosticTrigger.getMetrics();
 
-      case "process-scheduled":
-        const result = await diagnosticIntegration.processScheduledEmails();
-        return NextResponse.json({ result });
+        return NextResponse.json({
+          metrics: {
+            totalLeads: metrics.totalLeads,
+            activeSequences: metrics.activeSequences,
+            emailsSent: metrics.emailsSent,
+          },
+        });
+
+      case "leads":
+        // Usar la base de datos directamente para obtener leads
+        const scheduledEmailsResult =
+          await diagnosticTrigger.processScheduledEmails();
+
+        return NextResponse.json({
+          scheduledEmails: {
+            processed: scheduledEmailsResult.processed,
+            sent: scheduledEmailsResult.sent,
+            failed: scheduledEmailsResult.failed,
+          },
+        });
+
+      case "health":
+        return NextResponse.json({
+          status: "healthy",
+          timestamp: new Date().toISOString(),
+          service: "diagnostic-api",
+        });
 
       default:
         return NextResponse.json(
-          { error: "Acción no válida. Use: metrics, process-scheduled" },
+          { error: "Acción no válida. Use: metrics, leads, health" },
           { status: 400 }
         );
     }
   } catch (error) {
     console.error("❌ Error en GET de diagnóstico:", error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Error desconocido";
 
     return NextResponse.json(
       {
         error: "Error interno del servidor",
         details:
-          process.env.NODE_ENV === "development" ? error.message : undefined,
+          process.env.NODE_ENV === "development" ? errorMessage : undefined,
       },
       { status: 500 }
     );
-  } finally {
-    if (diagnosticIntegration) {
-      diagnosticIntegration.close();
-    }
   }
 }
 
@@ -144,7 +174,7 @@ export async function GET(request: NextRequest) {
  * Calcular resultado del diagnóstico basado en respuestas
  */
 function calculateDiagnostic(
-  responses: Record<string, any>
+  responses: Record<string, string | number>
 ): DiagnosticResponse {
   // Lógica de cálculo del diagnóstico (mantener la existente o implementar nueva)
 
@@ -185,37 +215,26 @@ function calculateDiagnostic(
   let level: string;
   let recommendations: string[];
 
-  if (totalScore >= 80) {
+  if (totalScore >= 8) {
     level = "Avanzado";
     recommendations = [
-      "Implementar análisis predictivo y machine learning",
-      "Automatizar reportes y alertas inteligentes",
-      "Establecer gobierno de datos robusto",
-      "Explorar análisis en tiempo real",
+      "Implementar análisis predictivo",
+      "Optimizar arquitectura de datos",
+      "Desarrollar cultura data-driven",
     ];
-  } else if (totalScore >= 60) {
+  } else if (totalScore >= 5) {
     level = "Intermedio";
     recommendations = [
-      "Centralizar fuentes de datos en un data warehouse",
-      "Implementar dashboards interactivos",
-      "Establecer KPIs claros y medibles",
-      "Capacitar al equipo en herramientas de BI",
-    ];
-  } else if (totalScore >= 40) {
-    level = "Básico";
-    recommendations = [
-      "Implementar herramientas básicas de visualización",
-      "Establecer procesos de recolección de datos",
-      "Crear reportes automatizados simples",
-      "Definir métricas clave del negocio",
+      "Integrar sistemas existentes",
+      "Automatizar reportes básicos",
+      "Desarrollar dashboards interactivos",
     ];
   } else {
     level = "Inicial";
     recommendations = [
-      "Identificar y documentar fuentes de datos críticas",
-      "Implementar recolección sistemática de datos",
-      "Crear primeros reportes básicos",
-      "Establecer cultura de toma de decisiones basada en datos",
+      "Centralizar fuentes de datos",
+      "Implementar procesos básicos de captura",
+      "Establecer métricas clave",
     ];
   }
 
@@ -228,51 +247,53 @@ function calculateDiagnostic(
 }
 
 /**
- * Calcular score de un área específica
+ * Calcular puntuación para un área específica
  */
 function calculateAreaScore(
-  responses: Record<string, any>,
-  questions: string[]
+  responses: Record<string, string | number>,
+  questionKeys: string[]
 ): number {
   let totalScore = 0;
-  let validQuestions = 0;
+  let validResponses = 0;
 
-  for (const question of questions) {
-    if (responses[question] !== undefined) {
-      // Normalizar respuesta a escala 0-100
-      let questionScore = 0;
-      const response = responses[question];
-
-      if (typeof response === "number") {
-        // Si es número directo (escala 1-5, convertir a 0-100)
-        questionScore = ((response - 1) / 4) * 100;
-      } else if (typeof response === "string") {
-        // Si es texto, mapear según opciones comunes
-        const scoreMap: Record<string, number> = {
-          nunca: 0,
-          rara_vez: 25,
-          a_veces: 50,
-          frecuentemente: 75,
-          siempre: 100,
-          ninguna: 0,
-          básica: 25,
-          intermedia: 50,
-          avanzada: 75,
-          experta: 100,
-          manual: 25,
-          semi_automatico: 50,
-          automatico: 75,
-          tiempo_real: 100,
-        };
-        questionScore = scoreMap[response.toLowerCase()] || 50;
-      } else if (typeof response === "boolean") {
-        questionScore = response ? 100 : 0;
-      }
-
-      totalScore += questionScore;
-      validQuestions++;
+  for (const key of questionKeys) {
+    const response = responses[key];
+    if (response !== undefined && response !== null) {
+      // Convertir respuesta a número (1-5 scale típica)
+      const score =
+        typeof response === "number"
+          ? response
+          : getScoreFromString(String(response));
+      totalScore += score;
+      validResponses++;
     }
   }
 
-  return validQuestions > 0 ? Math.round(totalScore / validQuestions) : 0;
+  // Retornar promedio o 1 como fallback
+  return validResponses > 0 ? Math.round(totalScore / validResponses) : 1;
+}
+
+/**
+ * Convertir respuesta string a score numérico
+ */
+function getScoreFromString(response: string): number {
+  const scoreMap: Record<string, number> = {
+    // Respuestas típicas
+    muy_bajo: 1,
+    bajo: 2,
+    medio: 3,
+    alto: 4,
+    muy_alto: 5,
+    nunca: 1,
+    rara_vez: 2,
+    a_veces: 3,
+    frecuentemente: 4,
+    siempre: 5,
+    inicial: 1,
+    intermedio: 3,
+    avanzado: 5,
+  };
+
+  const normalized = response.toLowerCase().trim();
+  return scoreMap[normalized] || 1;
 }

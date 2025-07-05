@@ -38,6 +38,30 @@ export interface EmailMetrics {
   clicked?: number;
 }
 
+// Tipos específicos para mejorar type safety
+interface EmailLogData {
+  to: string;
+  subject: string;
+  status: "sent" | "failed";
+  messageId?: string;
+  error?: string;
+  campaign?: string | undefined;
+  leadId?: string | undefined;
+  sentAt: Date;
+}
+
+interface NodemailerInfo {
+  messageId: string;
+  envelope: {
+    from: string;
+    to: string[];
+  };
+  accepted: string[];
+  rejected: string[];
+  pending: string[];
+  response: string;
+}
+
 export class EmailService {
   private transporter: nodemailer.Transporter;
   private config: EmailConfig;
@@ -55,11 +79,12 @@ export class EmailService {
       ...config,
     };
 
-    this.createTransporter();
+    // Inicializar transporter en el constructor
+    this.transporter = this.createTransporter();
   }
 
-  private createTransporter() {
-    this.transporter = nodemailer.createTransport({
+  private createTransporter(): nodemailer.Transporter {
+    const transporter = nodemailer.createTransport({
       service: this.config.service,
       auth: this.config.auth,
       pool: true, // Para múltiples emails
@@ -70,13 +95,15 @@ export class EmailService {
     });
 
     // Verificar conexión
-    this.transporter.verify((error, success) => {
+    transporter.verify((error: Error | null) => {
       if (error) {
         console.error("❌ Error de configuración de email:", error);
       } else {
         console.log("✅ Servidor de email configurado correctamente");
       }
     });
+
+    return transporter;
   }
 
   async sendEmail(options: SendEmailOptions): Promise<boolean> {
@@ -110,7 +137,7 @@ export class EmailService {
       return true;
     } catch (error) {
       this.metrics.failed++;
-      this.logEmailError(options, error);
+      this.logEmailError(options, error as Error);
       return false;
     }
   }
@@ -125,8 +152,8 @@ export class EmailService {
 
     for (const email of emailList) {
       try {
-        const success = await this.sendEmail(email);
-        if (success) {
+        const emailSent = await this.sendEmail(email);
+        if (emailSent) {
           sent++;
         } else {
           failed++;
@@ -198,7 +225,7 @@ export class EmailService {
     return `<${timestamp}.${random}@umiconsulting.co>`;
   }
 
-  private logEmailSent(options: SendEmailOptions, info: any) {
+  private logEmailSent(options: SendEmailOptions, info: NodemailerInfo) {
     console.log(`✅ Email enviado: ${options.to} - ${options.subject}`);
     console.log(`📬 Message ID: ${info.messageId}`);
 
@@ -208,13 +235,13 @@ export class EmailService {
       subject: options.subject,
       status: "sent",
       messageId: info.messageId,
-      campaign: options.campaign,
-      leadId: options.leadId,
+      campaign: options.campaign || undefined,
+      leadId: options.leadId || undefined,
       sentAt: new Date(),
     });
   }
 
-  private logEmailError(options: SendEmailOptions, error: any) {
+  private logEmailError(options: SendEmailOptions, error: Error) {
     console.error(`❌ Error enviando email: ${options.to} - ${error.message}`);
 
     // En producción, guardar en base de datos
@@ -223,13 +250,13 @@ export class EmailService {
       subject: options.subject,
       status: "failed",
       error: error.message,
-      campaign: options.campaign,
-      leadId: options.leadId,
+      campaign: options.campaign || undefined,
+      leadId: options.leadId || undefined,
       sentAt: new Date(),
     });
   }
 
-  private async saveEmailLog(logData: any) {
+  private async saveEmailLog(logData: EmailLogData) {
     // En producción, implementar guardado en base de datos
     // Por ahora, solo console.log para debugging
     console.log("📊 Email log:", JSON.stringify(logData, null, 2));

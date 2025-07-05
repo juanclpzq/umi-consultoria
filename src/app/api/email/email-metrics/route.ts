@@ -1,7 +1,7 @@
 // 🆕 NUEVO ARCHIVO: src/app/api/email-metrics/route.ts
 // Endpoint dedicado para métricas del sistema
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getEmailService } from "@/lib/email/emailService";
 import { getSequenceManager } from "@/lib/email/sequenceManager";
 
@@ -62,8 +62,17 @@ export async function GET() {
       },
     });
   } catch (error) {
+    console.error("❌ Error obteniendo métricas:", error);
     return NextResponse.json(
-      { error: "Error obteniendo métricas" },
+      {
+        error: "Error obteniendo métricas",
+        details:
+          process.env.NODE_ENV === "development"
+            ? error instanceof Error
+              ? error.message
+              : String(error)
+            : undefined,
+      },
       { status: 500 }
     );
   }
@@ -85,8 +94,17 @@ export async function DELETE() {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    console.error("❌ Error reseteando métricas:", error);
     return NextResponse.json(
-      { error: "Error reseteando métricas" },
+      {
+        error: "Error reseteando métricas",
+        details:
+          process.env.NODE_ENV === "development"
+            ? error instanceof Error
+              ? error.message
+              : String(error)
+            : undefined,
+      },
       { status: 500 }
     );
   }

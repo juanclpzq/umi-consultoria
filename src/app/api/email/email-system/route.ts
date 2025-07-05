@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSequenceManager } from "@/lib/email/sequenceManager";
-import { getEmailService } from "@/lib/email/emailService";
 
 // GET: Ejecutar secuencias automáticas (para cron jobs)
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     console.log("🔄 Ejecutando secuencias automáticas...");
 

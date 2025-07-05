@@ -1,451 +1,371 @@
 // src/lib/integration/diagnosticTrigger.ts
-// Integración entre diagnóstico y sistema de secuencias
-
 import { getSequenceManager } from "../email/sequenceManager";
+import { LeadDatabase, DiagnosticData, LeadData } from "../database/sqlite";
+import { v4 as uuidv4 } from "uuid";
 
-// Interfaces mejoradas con exactOptionalPropertyTypes
-export interface LeadData {
-  id: string;
+// Interface para el resultado del procesamiento
+export interface ProcessDiagnosticResult {
+  isNewLead: boolean;
+  leadId: string;
+  emailsToSend: Array<{
+    template: string;
+    day: number;
+    subject: string;
+  }>;
+  message: string;
+}
+
+// Interface para métricas
+export interface DiagnosticMetrics {
+  totalLeads: number;
+  activeSequences: number;
+  emailsSent: number;
+}
+
+// Interface para el resultado de emails programados
+export interface ScheduledEmailsResult {
+  processed: number;
+  sent: number;
+  failed: number;
+}
+
+// Interface para submission de diagnóstico - EXPORTADA
+export interface DiagnosticSubmission {
   email: string;
   name: string;
-  company: string; // Requerido, no opcional
-  diagnosticDate: string;
-  emailsSent: string[];
-  sequencePaused: boolean;
-  diagnosticData: DiagnosticData;
-  lastSubmissionDate?: string;
-  submissionCount?: number;
-  updated?: string;
-}
-
-export interface DiagnosticData {
+  company?: string;
+  diagnosticResult: {
+    score: number;
+    level: string;
+    recommendations: string[];
+    areas: {
+      dataCollection: number;
+      analysis: number;
+      visualization: number;
+      decisionMaking: number;
+    };
+  };
   submissionDate: string;
-  score: number;
-  level: string;
-  recommendations: string[];
-  areas: {
-    dataCollection: number;
-    analysis: number;
-    visualization: number;
-    decisionMaking: number;
-  };
-  lastSubmissionDate?: string;
-  submissionCount?: number;
-}
-
-export interface EmailLog {
-  leadId: string;
-  templateName: string;
-  sequenceDay: number;
-  subject: string; // Requerido, no opcional
-  status: "sent" | "failed" | "pending";
-  sentAt?: string;
-  error?: string;
-}
-
-export interface DiagnosticResult {
-  answers: Record<number, string>;
-  score: number;
-  levelName: string;
-  contactInfo: {
-    name: string;
-    email: string;
-    company: string;
-    phone?: string;
-  };
-  completionTime?: number;
-  timestamp: string;
 }
 
 export class DiagnosticTrigger {
-  private sequenceManager;
-  private leads: Map<string, LeadData> = new Map();
-  private emailLogs: EmailLog[] = [];
+  private database: LeadDatabase;
+  private sequenceManager: unknown; // CAMBIO: Usar unknown en lugar de Record<string, unknown>
 
   constructor() {
+    this.database = new LeadDatabase();
     this.sequenceManager = getSequenceManager();
   }
 
-  // Procesar resultado de diagnóstico y crear/actualizar lead
-  async processDiagnosticResult(result: DiagnosticResult): Promise<boolean> {
+  /**
+   * Procesar diagnóstico - método principal
+   */
+  async processDiagnostic(
+    submission: DiagnosticSubmission
+  ): Promise<ProcessDiagnosticResult> {
     try {
-      const { contactInfo, score, levelName, answers, timestamp } = result;
+      // Validar entrada
+      this.validateSubmission(submission);
 
-      // Validar que company no sea undefined
-      if (!contactInfo.company) {
-        console.error("❌ Company es requerido para crear lead");
-        return false;
-      }
-
-      const leadId = this.generateLeadId(contactInfo.email);
-      const existingLead = this.leads.get(leadId);
+      const existingLead = this.database.findLeadByEmail(submission.email);
 
       if (existingLead) {
-        // Actualizar lead existente
-        const updatedLead = await this.updateExistingLead(existingLead, result);
-        this.leads.set(leadId, updatedLead);
-        console.log(`🔄 Lead actualizado: ${contactInfo.email}`);
+        return await this.updateExistingLead(existingLead, submission);
       } else {
-        // Crear nuevo lead - asegurar que company no sea undefined
-        const newLead: LeadData = {
-          id: leadId,
-          email: contactInfo.email,
-          name: contactInfo.name,
-          company: contactInfo.company, // Ya validamos que no es undefined
-          diagnosticDate: timestamp,
-          emailsSent: [],
-          sequencePaused: false,
-          diagnosticData: {
-            submissionDate: timestamp,
-            score,
-            level: levelName,
-            recommendations: this.generateRecommendations(answers, levelName),
-            areas: this.calculateAreas(answers),
-          },
-        };
-
-        this.leads.set(leadId, newLead);
-        console.log(`✅ Nuevo lead creado: ${contactInfo.email}`);
-
-        // Iniciar secuencia de seguimiento
-        await this.triggerEmailSequence(newLead);
+        return await this.createNewLead(submission);
       }
-
-      return true;
     } catch (error) {
-      console.error("❌ Error procesando resultado de diagnóstico:", error);
-      return false;
+      console.error("❌ Error procesando diagnóstico:", error);
+      throw error;
     }
   }
 
-  // Actualizar lead existente con nueva información
-  private async updateExistingLead(
-    existingLead: LeadData,
-    result: DiagnosticResult
-  ): Promise<LeadData> {
-    const { contactInfo, score, levelName, answers, timestamp } = result;
+  /**
+   * Crear nuevo lead
+   */
+  private async createNewLead(
+    submission: DiagnosticSubmission
+  ): Promise<ProcessDiagnosticResult> {
+    const leadId = uuidv4();
 
-    // Usar company del contactInfo si existe, sino mantener el existente
-    const company = contactInfo.company ?? existingLead.company;
-
-    const updatedLead: LeadData = {
-      ...existingLead, // Mantener campos existentes primero
-      name: contactInfo.name,
-      company, // Garantizado que no es undefined
-      diagnosticDate: timestamp,
-      diagnosticData: {
-        submissionDate: existingLead.diagnosticData.submissionDate, // Mantener original
-        lastSubmissionDate: timestamp,
-        submissionCount: (existingLead.diagnosticData.submissionCount ?? 0) + 1,
-        score,
-        level: levelName,
-        recommendations: this.generateRecommendations(answers, levelName),
-        areas: this.calculateAreas(answers),
-      },
-      updated: new Date().toISOString(),
+    const diagnosticData: DiagnosticData = {
+      score: submission.diagnosticResult.score,
+      level: submission.diagnosticResult.level,
+      recommendations: submission.diagnosticResult.recommendations,
+      areas: submission.diagnosticResult.areas,
     };
 
-    // Si cambió significativamente el nivel, reiniciar secuencia
-    if (this.shouldRestartSequence(existingLead, updatedLead)) {
-      await this.restartSequenceForLead(updatedLead);
-    }
-
-    return updatedLead;
-  }
-
-  // Verificar si debe reiniciarse la secuencia
-  private shouldRestartSequence(oldLead: LeadData, newLead: LeadData): boolean {
-    // Reiniciar si cambió el nivel significativamente
-    const levelOrder = ["Inicial", "Intermedio", "Avanzado"];
-    const oldIndex = levelOrder.indexOf(oldLead.diagnosticData.level);
-    const newIndex = levelOrder.indexOf(newLead.diagnosticData.level);
-
-    return Math.abs(oldIndex - newIndex) >= 1;
-  }
-
-  // Iniciar secuencia de seguimiento para nuevo lead
-  private async triggerEmailSequence(lead: LeadData): Promise<void> {
-    try {
-      // Convertir a formato esperado por SequenceManager
-      const sequenceLead = {
-        id: lead.id,
-        email: lead.email,
-        name: lead.name,
-        company: lead.company,
-        diagnosticDate: new Date(lead.diagnosticDate),
-        meetingScheduled: false,
-        meetingAttended: false,
-        emailsSent: lead.emailsSent,
-        sequencePaused: lead.sequencePaused,
-        diagnosticData: {
-          score: lead.diagnosticData.score,
-          level: lead.diagnosticData.level,
-          primaryChallenge: this.getPrimaryChallenge(lead.diagnosticData),
-          quickWins: this.generateQuickWins(lead.diagnosticData),
-          estimatedROI: this.calculateROI(lead.diagnosticData),
-        },
-      };
-
-      await this.sequenceManager.processLeadSequences(sequenceLead);
-
-      // Log del email enviado
-      this.logEmailSent(
-        lead,
-        "day0Urgency",
-        0,
-        "Momento clave para tu empresa"
-      );
-
-      console.log(`📧 Secuencia iniciada para ${lead.email}`);
-    } catch (error) {
-      console.error(`❌ Error iniciando secuencia para ${lead.email}:`, error);
-    }
-  }
-
-  // Reiniciar secuencia para lead existente
-  private async restartSequenceForLead(lead: LeadData): Promise<void> {
-    try {
-      // Primero pausar secuencia actual
-      await this.sequenceManager.pauseSequenceForLead(
-        lead.id,
-        "diagnostic_updated"
-      );
-
-      // Limpiar emails enviados para permitir reenvío
-      lead.emailsSent = [];
-
-      // Reiniciar secuencia
-      await this.triggerEmailSequence(lead);
-
-      console.log(`🔄 Secuencia reiniciada para ${lead.email}`);
-    } catch (error) {
-      console.error(
-        `❌ Error reiniciando secuencia para ${lead.email}:`,
-        error
-      );
-    }
-  }
-
-  // Log de email enviado
-  private logEmailSent(
-    lead: LeadData,
-    templateName: string,
-    day: number,
-    subject: string
-  ): void {
-    const emailLog: EmailLog = {
-      leadId: lead.id,
-      templateName,
-      sequenceDay: day,
-      subject, // Garantizado que no es undefined
-      status: "sent",
-      sentAt: new Date().toISOString(),
+    // Construir objeto base
+    const newLead: LeadData = {
+      id: leadId,
+      email: submission.email,
+      name: submission.name,
+      diagnosticDate: submission.submissionDate,
+      emailsSent: [],
+      sequencePaused: false,
+      diagnosticData,
     };
 
-    this.emailLogs.push(emailLog);
-  }
-
-  // Generar ID único para lead
-  private generateLeadId(email: string): string {
-    return `lead_${email.split("@")[0]}_${Date.now()}`;
-  }
-
-  // Generar recomendaciones basadas en respuestas
-  private generateRecommendations(
-    answers: Record<number, string>,
-    level: string
-  ): string[] {
-    switch (level) {
-      case "Inicial":
-        return [
-          "Centralizar fuentes de datos",
-          "Implementar procesos básicos de captura",
-          "Establecer métricas clave",
-        ];
-      case "Intermedio":
-        return [
-          "Integrar sistemas existentes",
-          "Automatizar reportes básicos",
-          "Desarrollar dashboards interactivos",
-        ];
-      case "Avanzado":
-        return [
-          "Implementar análisis predictivo",
-          "Optimizar arquitectura de datos",
-          "Desarrollar cultura data-driven",
-        ];
-      default:
-        return [
-          "Centralizar fuentes de datos",
-          "Implementar procesos básicos de captura",
-          "Establecer métricas clave",
-        ];
+    // Añadir company solo si existe
+    if (submission.company) {
+      newLead.company = submission.company;
     }
-  }
 
-  // Calcular áreas de fortaleza/debilidad
-  private calculateAreas(answers: Record<number, string>): {
-    dataCollection: number;
-    analysis: number;
-    visualization: number;
-    decisionMaking: number;
-  } {
-    // Lógica simplificada basada en respuestas
-    const scoreMap: Record<string, number> = {
-      inicial: 1,
-      intermedio: 2,
-      avanzado: 3,
-      intuicion: 1,
-      datos_basicos: 2,
-      analisis: 3,
-      recopilacion: 1,
-      organizacion: 2,
-      interpretacion: 3,
-    };
+    // Guardar en base de datos
+    this.database.upsertLead(newLead);
 
-    const getScore = (key: number): number => {
-      const answer = answers[key];
-      if (!answer) return 1; // Fallback si no existe la respuesta
-      return scoreMap[answer] ?? 1; // Fallback si no existe en scoreMap
-    };
+    // Determinar emails a enviar
+    const emailsToSend = this.calculateEmailsToSend(newLead);
+
+    // Enviar emails inmediatos
+    await this.sendScheduledEmails(leadId, emailsToSend);
 
     return {
-      dataCollection: getScore(1),
-      analysis: getScore(2),
-      visualization: Math.round((getScore(1) + getScore(3)) / 2),
-      decisionMaking: getScore(3),
+      isNewLead: true,
+      leadId,
+      emailsToSend,
+      message: `Nuevo lead creado. ${emailsToSend.length} emails programados.`,
     };
   }
 
-  // Obtener desafío principal
-  private getPrimaryChallenge(diagnosticData: DiagnosticData): string {
-    switch (diagnosticData.level) {
-      case "Inicial":
-        return "Organización de datos básica";
-      case "Intermedio":
-        return "Integración y automatización";
-      case "Avanzado":
-        return "Optimización y análisis avanzado";
-      default:
-        return "Organización de datos";
+  /**
+   * Actualizar lead existente
+   */
+  private async updateExistingLead(
+    existingLead: LeadData,
+    submission: DiagnosticSubmission
+  ): Promise<ProcessDiagnosticResult> {
+    // Actualizar datos
+    const updatedDiagnosticData: DiagnosticData = {
+      score: submission.diagnosticResult.score,
+      level: submission.diagnosticResult.level,
+      recommendations: submission.diagnosticResult.recommendations,
+      areas: submission.diagnosticResult.areas,
+    };
+
+    // Construir objeto actualizado paso a paso
+    const updatedLead: LeadData = {
+      id: existingLead.id,
+      email: existingLead.email,
+      name: submission.name,
+      diagnosticDate: existingLead.diagnosticDate,
+      emailsSent: existingLead.emailsSent,
+      sequencePaused: existingLead.sequencePaused,
+      diagnosticData: updatedDiagnosticData,
+    };
+
+    // Añadir propiedades opcionales solo si existen
+    if (submission.company) {
+      updatedLead.company = submission.company;
+    } else if (existingLead.company) {
+      updatedLead.company = existingLead.company;
     }
+
+    if (existingLead.lastEmailSent) {
+      updatedLead.lastEmailSent = existingLead.lastEmailSent;
+    }
+
+    if (existingLead.pauseReason) {
+      updatedLead.pauseReason = existingLead.pauseReason;
+    }
+
+    if (existingLead.createdAt) {
+      updatedLead.createdAt = existingLead.createdAt;
+    }
+
+    if (existingLead.updatedAt) {
+      updatedLead.updatedAt = existingLead.updatedAt;
+    }
+
+    // Guardar cambios
+    this.database.upsertLead(updatedLead);
+
+    // Calcular emails pendientes (excluyendo ya enviados)
+    const emailsToSend = this.calculateEmailsToSend(updatedLead);
+
+    return {
+      isNewLead: false,
+      leadId: existingLead.id,
+      emailsToSend,
+      message: `Lead actualizado. ${emailsToSend.length} emails enviados.`,
+    };
   }
 
-  // Generar quick wins específicos
-  private generateQuickWins(diagnosticData: DiagnosticData): Array<{
-    action: string;
-    description: string;
+  /**
+   * Calcular emails que deben enviarse según días transcurridos
+   */
+  private calculateEmailsToSend(lead: LeadData): Array<{
+    template: string;
+    day: number;
+    subject: string;
   }> {
-    switch (diagnosticData.level) {
-      case "Inicial":
-        return [
-          {
-            action: "Auditoría de datos",
-            description: "Mapear todas las fuentes de datos actuales",
-          },
-          {
-            action: "Dashboard básico",
-            description: "Crear visualización de KPIs principales",
-          },
-        ];
-      case "Intermedio":
-        return [
-          {
-            action: "Integración de sistemas",
-            description: "Conectar las 2-3 fuentes más importantes",
-          },
-          {
-            action: "Automatización básica",
-            description: "Eliminar procesos manuales repetitivos",
-          },
-        ];
-      case "Avanzado":
-        return [
-          {
-            action: "Análisis predictivo",
-            description: "Implementar modelos de predicción básicos",
-          },
-          {
-            action: "Optimización de procesos",
-            description: "Revisar y mejorar flujos de datos existentes",
-          },
-        ];
-      default:
-        return [
-          {
-            action: "Auditoría de datos",
-            description: "Mapear todas las fuentes de datos actuales",
-          },
-          {
-            action: "Dashboard básico",
-            description: "Crear visualización de KPIs principales",
-          },
-        ];
-    }
-  }
+    const daysElapsed = this.database.getDaysElapsed(lead.id);
+    const emailsToSend = [];
 
-  // Calcular ROI estimado
-  private calculateROI(diagnosticData: DiagnosticData): {
-    timeToValue: number;
-    expectedReturn: number;
-  } {
-    switch (diagnosticData.level) {
-      case "Inicial":
-        return { timeToValue: 45, expectedReturn: 150 };
-      case "Intermedio":
-        return { timeToValue: 30, expectedReturn: 250 };
-      case "Avanzado":
-        return { timeToValue: 20, expectedReturn: 400 };
-      default:
-        return { timeToValue: 45, expectedReturn: 150 };
-    }
-  }
+    // Secuencia de emails programados
+    const emailSequence = [
+      { day: 0, template: "diagnostic_welcome", subject: "Bienvenida" },
+      { day: 2, template: "diagnostic_followup_1", subject: "Seguimiento 1" },
+      { day: 5, template: "diagnostic_followup_2", subject: "Seguimiento 2" },
+      { day: 10, template: "diagnostic_followup_3", subject: "Seguimiento 3" },
+    ];
 
-  // Métodos de gestión de leads
-  getLeadById(leadId: string): LeadData | undefined {
-    return this.leads.get(leadId);
-  }
-
-  getLeadByEmail(email: string): LeadData | undefined {
-    for (const lead of this.leads.values()) {
-      if (lead.email === email) {
-        return lead;
+    for (const emailConfig of emailSequence) {
+      // Solo incluir si ya debería haberse enviado y no se ha enviado
+      if (
+        daysElapsed >= emailConfig.day &&
+        !this.database.wasEmailSent(lead.id, emailConfig.day)
+      ) {
+        emailsToSend.push(emailConfig);
       }
     }
-    return undefined;
+
+    return emailsToSend;
   }
 
-  getAllLeads(): LeadData[] {
-    return Array.from(this.leads.values());
-  }
+  /**
+   * Enviar emails programados
+   */
+  private async sendScheduledEmails(
+    leadId: string,
+    emails: Array<{ template: string; day: number; subject: string }>
+  ): Promise<void> {
+    for (const email of emails) {
+      try {
+        // Registrar email como enviado
+        this.database.logEmailSent({
+          leadId,
+          templateName: email.template,
+          sequenceDay: email.day,
+          subject: email.subject,
+          status: "sent",
+        });
 
-  getEmailLogs(): EmailLog[] {
-    return [...this.emailLogs];
-  }
+        console.log(
+          `📧 Email enviado: ${email.template} (Day ${email.day}) para lead ${leadId}`
+        );
+      } catch (error) {
+        console.error(`❌ Error enviando email ${email.template}:`, error);
 
-  // Métodos de testing
-  async testDiagnosticFlow(testResult: DiagnosticResult): Promise<boolean> {
-    console.log("🧪 Testing flujo de diagnóstico...");
-
-    try {
-      const success = await this.processDiagnosticResult(testResult);
-      console.log(`✅ Test completado: ${success ? "Éxito" : "Fallo"}`);
-      return success;
-    } catch (testError) {
-      console.error("❌ Error en test:", testError);
-      return false;
+        // Registrar error
+        this.database.logEmailSent({
+          leadId,
+          templateName: email.template,
+          sequenceDay: email.day,
+          subject: email.subject,
+          status: "failed",
+        });
+      }
     }
   }
 
-  // Limpiar datos de test
-  clearTestData(): void {
-    this.leads.clear();
-    this.emailLogs.length = 0;
-    console.log("🧹 Datos de test limpiados");
+  /**
+   * Procesar emails programados (para cron jobs)
+   */
+  async processScheduledEmails(): Promise<ScheduledEmailsResult> {
+    try {
+      const pendingLeads = this.database.getLeadsPendingEmails();
+      let processed = 0;
+      let sent = 0;
+      let failed = 0;
+
+      for (const lead of pendingLeads) {
+        const emailsToSend = this.calculateEmailsToSend(lead);
+
+        if (emailsToSend.length > 0) {
+          processed++;
+
+          try {
+            await this.sendScheduledEmails(lead.id, emailsToSend);
+            sent += emailsToSend.length;
+          } catch (error) {
+            failed++;
+            console.error(`❌ Error procesando lead ${lead.id}:`, error);
+          }
+        }
+      }
+
+      return { processed, sent, failed };
+    } catch (error) {
+      console.error("❌ Error en processScheduledEmails:", error);
+      return { processed: 0, sent: 0, failed: 0 };
+    }
+  }
+
+  /**
+   * Obtener métricas
+   */
+  getMetrics(): DiagnosticMetrics {
+    try {
+      const dbMetrics = this.database.getMetrics();
+
+      return {
+        totalLeads: dbMetrics.totalLeads,
+        activeSequences: dbMetrics.activeSequences,
+        emailsSent: dbMetrics.emailsSentToday,
+      };
+    } catch (error) {
+      console.error("❌ Error obteniendo métricas:", error);
+      return {
+        totalLeads: 0,
+        activeSequences: 0,
+        emailsSent: 0,
+      };
+    }
+  }
+
+  /**
+   * Validar submission
+   */
+  private validateSubmission(submission: DiagnosticSubmission): void {
+    if (!submission.email || !this.isValidEmail(submission.email)) {
+      throw new Error("Email inválido");
+    }
+
+    if (!submission.name || submission.name.trim().length === 0) {
+      throw new Error("Nombre requerido");
+    }
+
+    if (
+      !submission.submissionDate ||
+      !this.isValidDate(submission.submissionDate)
+    ) {
+      throw new Error("Fecha de submisión inválida");
+    }
+
+    if (
+      !submission.diagnosticResult ||
+      typeof submission.diagnosticResult.score !== "number"
+    ) {
+      throw new Error("Resultado de diagnóstico inválido");
+    }
+  }
+
+  /**
+   * Validar email
+   */
+  private isValidEmail(email: string): boolean {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  }
+
+  /**
+   * Validar fecha
+   */
+  private isValidDate(dateString: string): boolean {
+    const date = new Date(dateString);
+    return !isNaN(date.getTime());
+  }
+
+  /**
+   * Cerrar conexión de base de datos
+   */
+  close(): void {
+    this.database.close();
   }
 }
 
-// Instancia singleton
+// Instancia singleton para uso en la aplicación
 let diagnosticTriggerInstance: DiagnosticTrigger | null = null;
 
 export const getDiagnosticTrigger = (): DiagnosticTrigger => {

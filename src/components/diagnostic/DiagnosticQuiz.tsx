@@ -104,7 +104,7 @@ const DiagnosticQuiz = () => {
     if (stage === "questions" && startTime === Date.now()) {
       setStartTime(Date.now());
     }
-  }, [stage]);
+  }, [stage, startTime]);
 
   // Manejar selección de opción en las preguntas
   const handleOptionSelect = (value: string) => {
@@ -167,8 +167,9 @@ const DiagnosticQuiz = () => {
         });
 
         // Tracking para analytics si está disponible
-        if (typeof window !== "undefined" && (window as any).gtag) {
-          (window as any).gtag("event", "diagnostic_completed", {
+        if (typeof window !== "undefined" && "gtag" in window) {
+          const gtag = (window as { gtag: (...args: unknown[]) => void }).gtag;
+          gtag("event", "diagnostic_completed", {
             event_category: "Diagnostic",
             event_label: getLevelName(),
             value: getScore(),
@@ -197,222 +198,203 @@ const DiagnosticQuiz = () => {
 
   // Manejar envío del formulario de contacto
   const handleContactSubmit = async (contactData: ContactInfo) => {
-    setLoading(true);
+    setDiagnosticState({
+      status: "sending",
+      message: "Enviando diagnóstico...",
+    });
+
+    // Guardar contactInfo en estado
     setContactInfo(contactData);
-    setDiagnosticState({ status: "sending", message: "" });
 
     // Enviar diagnóstico por email
-    const emailSent = await sendDiagnosticEmail(contactData);
+    const success = await sendDiagnosticEmail(contactData);
 
-    if (emailSent) {
-      // Si el email se envió correctamente, avanzar al resultado final
+    if (success) {
+      // Cambiar a pantalla de resultado final
       setTimeout(() => {
-        setLoading(false);
         setStage("result");
-      }, 1000);
-    } else {
-      // Si hubo error, mantener en el formulario para reintentar
-      setLoading(false);
+      }, 2000);
     }
   };
 
-  // Reiniciar todo el quiz
+  // Resetear el quiz
   const resetQuiz = () => {
     setStage("welcome");
     setCurrentQuestion(1);
     setAnswers({});
+    setLoading(false);
     setContactInfo(null);
     setStartTime(Date.now());
     setDiagnosticState({ status: "idle", message: "" });
   };
 
-  // Calcular puntuación para mostrar en el resultado
-  const getScore = () => {
-    // Lógica simplificada para calcular puntuación basada en respuestas
+  // Funciones para calcular resultados
+  const getScore = (): number => {
+    const values = Object.values(answers);
     let score = 0;
 
-    if (answers[1] === "avanzado") score += 4;
-    else if (answers[1] === "intermedio") score += 2;
-    else score += 1;
-
-    if (answers[2] === "analisis") score += 3;
-    else if (answers[2] === "datos_basicos") score += 2;
-    else score += 1;
-
-    if (answers[3] === "interpretacion") score += 3;
-    else if (answers[3] === "organizacion") score += 2;
-    else score += 1;
-
-    return score;
-  };
-
-  // Obtener nombre del nivel basado en puntuación
-  const getLevelName = () => {
-    const score = getScore();
-    if (score >= 8) return "Avanzado";
-    if (score >= 5) return "Intermedio";
-    return "Inicial";
-  };
-
-  // Generar descripción para el resultado parcial
-  const getSnapshotDescription = () => {
-    const level = getLevelName();
-
-    if (level === "Avanzado") {
-      return "Tu organización está utilizando datos de manera efectiva, pero hay oportunidades para extraer aún más valor estratégico y ventajas competitivas.";
-    } else if (level === "Intermedio") {
-      return "Has establecido algunos procesos de análisis de datos, pero existen brechas importantes que limitan su potencial para impulsar decisiones estratégicas.";
-    } else {
-      return "Tu negocio está en las primeras etapas de aprovechamiento de datos. Establecer una base sólida ahora tendrá un impacto significativo en tu crecimiento futuro.";
-    }
-  };
-
-  // Identificar la oportunidad principal
-  const getPrimaryOpportunity = () => {
-    if (answers[3] === "recopilacion") {
-      return "Implementar un sistema centralizado de recopilación de datos que elimine los silos de información y permita una visión unificada del negocio.";
-    } else if (answers[3] === "organizacion") {
-      return "Estructurar tus datos existentes para facilitar análisis más profundos y descubrir patrones ocultos que impulsen la toma de decisiones.";
-    } else {
-      return "Desarrollar visualizaciones claras y frameworks de interpretación que conviertan tus datos en insights accionables para los tomadores de decisiones.";
-    }
-  };
-
-  // Porcentaje de empresas similares con el mismo desafío
-  const getOpportunityPercentage = () => {
-    if (answers[3] === "recopilacion") return 68;
-    if (answers[3] === "organizacion") return 75;
-    return 82;
-  };
-
-  // Generar recomendaciones para el resultado completo
-  const getRecommendations = () => {
-    const level = getLevelName();
-    const challengeType = answers[3];
-
-    if (level === "Inicial") {
-      if (challengeType === "recopilacion") {
-        return [
-          {
-            title: "Implementar sistema básico de centralización",
-            description:
-              "Establece un repositorio central para tus datos clave utilizando herramientas accesibles como Google Sheets o Airtable como punto de partida.",
-          },
-          {
-            title: "Auditar fuentes de datos existentes",
-            description:
-              "Identifica todas las fuentes de datos actuales y documenta qué información contiene cada una para crear un mapa completo de tus activos de datos.",
-          },
-          {
-            title: "Establecer procesos de captura",
-            description:
-              "Define procesos simples pero consistentes para la captura regular de datos importantes, asignando responsables claros para cada área.",
-          },
-        ];
-      } else if (challengeType === "organizacion") {
-        return [
-          {
-            title: "Crear esquema de organización",
-            description:
-              "Desarrolla una estructura básica para clasificar y organizar tus datos, comenzando con las áreas de mayor impacto para el negocio.",
-          },
-          {
-            title: "Implementar controles de calidad",
-            description:
-              "Establece verificaciones simples de calidad para garantizar la precisión y consistencia de los datos que recopilas.",
-          },
-          {
-            title: "Normalizar formatos clave",
-            description:
-              "Estandariza los formatos de tus datos más importantes (fechas, categorías, etc.) para facilitar su análisis posterior.",
-          },
-        ];
-      } else {
-        return [
-          {
-            title: "Crear dashboards básicos",
-            description:
-              "Desarrolla visualizaciones simples pero efectivas de tus KPIs más importantes para facilitar su seguimiento regular.",
-          },
-          {
-            title: "Implementar revisiones periódicas",
-            description:
-              "Establece un ritmo de revisión semanal o mensual de tus métricas clave con los responsables de cada área.",
-          },
-          {
-            title: "Formar en interpretación básica",
-            description:
-              "Capacita a tu equipo en los fundamentos de interpretación de datos para que puedan extraer conclusiones útiles de la información.",
-          },
-        ];
+    values.forEach((value) => {
+      switch (value) {
+        case "inicial":
+        case "intuicion":
+        case "recopilacion":
+          score += 2;
+          break;
+        case "intermedio":
+        case "datos_basicos":
+        case "organizacion":
+          score += 5;
+          break;
+        case "avanzado":
+        case "analisis":
+        case "interpretacion":
+          score += 8;
+          break;
       }
-    } else if (level === "Intermedio") {
-      // Recomendaciones para nivel intermedio...
-      return [
-        {
-          title: "Integrar fuentes dispersas",
-          description:
-            "Implementa integraciones entre tus diferentes sistemas para eliminar la necesidad de procesos manuales y obtener una visión unificada.",
-        },
-        {
-          title: "Desarrollar métricas avanzadas",
-          description:
-            "Ve más allá de las métricas básicas y desarrolla KPIs compuestos que capturen mejor la salud real y el rendimiento de tu negocio.",
-        },
-        {
-          title: "Automatizar informes clave",
-          description:
-            "Configura la generación automática de informes para los insights más utilizados, liberando tiempo para análisis de mayor valor.",
-        },
-      ];
-    } else {
-      // Recomendaciones para nivel avanzado...
-      return [
-        {
-          title: "Implementar análisis predictivo",
-          description:
-            "Evoluciona de análisis descriptivos a modelos predictivos que te permitan anticipar tendencias y comportamientos futuros.",
-        },
-        {
-          title: "Desarrollar estrategia de datos",
-          description:
-            "Crea una estrategia formal de datos alineada con tus objetivos de negocio para maximizar el valor extraído de tu información.",
-        },
-        {
-          title: "Fomentar cultura data-driven",
-          description:
-            "Impulsa una cultura organizacional donde las decisiones en todos los niveles estén respaldadas por datos relevantes y análisis riguroso.",
-        },
-      ];
+    });
+
+    return Math.round((score / (values.length * 8)) * 10);
+  };
+
+  const getLevelName = (): string => {
+    const score = getScore();
+    if (score <= 3) return "Inicial";
+    if (score <= 6) return "Intermedio";
+    return "Avanzado";
+  };
+
+  const getSnapshotDescription = (): string => {
+    const level = getLevelName();
+    switch (level) {
+      case "Inicial":
+        return "Tu empresa está comenzando en el mundo del análisis de datos. Hay una gran oportunidad de crecimiento implementando procesos básicos de organización de datos.";
+      case "Intermedio":
+        return "Tu empresa tiene una base sólida en datos, pero hay oportunidades significativas para optimizar procesos y obtener insights más profundos.";
+      case "Avanzado":
+        return "Tu empresa está bien posicionada en analítica de datos. El enfoque debe estar en optimización avanzada y análisis predictivo.";
+      default:
+        return "Evaluación completada.";
     }
   };
+
+  const getPrimaryOpportunity = (): string => {
+    const level = getLevelName();
+    switch (level) {
+      case "Inicial":
+        return "Implementar un sistema básico de recolección y organización de datos que te permita tomar decisiones más informadas.";
+      case "Intermedio":
+        return "Automatizar procesos de análisis y crear dashboards dinámicos para reducir tiempo de generación de reportes.";
+      case "Avanzado":
+        return "Desarrollar modelos predictivos que anticipen tendencias del mercado y optimicen la estrategia de negocio.";
+      default:
+        return "Evaluación completada.";
+    }
+  };
+
+  const getOpportunityPercentage = (): number => {
+    const level = getLevelName();
+    switch (level) {
+      case "Inicial":
+        return 200;
+      case "Intermedio":
+        return 150;
+      case "Avanzado":
+        return 100;
+      default:
+        return 0;
+    }
+  };
+
+  const getRecommendations = (): Array<{
+    title: string;
+    description: string;
+  }> => {
+    const level = getLevelName();
+    switch (level) {
+      case "Inicial":
+        return [
+          {
+            title: "Auditoría de Datos",
+            description:
+              "Mapeo completo de fuentes de datos actuales y identificación de gaps críticos.",
+          },
+          {
+            title: "Dashboard Básico",
+            description:
+              "Implementación de visualizaciones clave para KPIs principales del negocio.",
+          },
+          {
+            title: "Procesos de Recolección",
+            description:
+              "Establecimiento de flujos estructurados para captura consistente de datos.",
+          },
+        ];
+      case "Intermedio":
+        return [
+          {
+            title: "Automatización de Reportes",
+            description:
+              "Eliminación de procesos manuales y creación de reportes automáticos.",
+          },
+          {
+            title: "Integración de Sistemas",
+            description:
+              "Conexión de fuentes de datos para una vista unificada del negocio.",
+          },
+          {
+            title: "Análisis Avanzado",
+            description:
+              "Implementación de métricas avanzadas y análisis de tendencias.",
+          },
+        ];
+      case "Avanzado":
+        return [
+          {
+            title: "Modelos Predictivos",
+            description:
+              "Desarrollo de algoritmos para anticipar comportamientos y tendencias.",
+          },
+          {
+            title: "IA y Machine Learning",
+            description:
+              "Implementación de soluciones de inteligencia artificial para optimización.",
+          },
+          {
+            title: "Estrategia Data-Driven",
+            description:
+              "Cultura organizacional basada completamente en datos y analytics.",
+          },
+        ];
+      default:
+        return [];
+    }
+  };
+
+  // Obtener la pregunta actual de forma segura
+  const getCurrentQuestion = (): Question | null => {
+    const questionIndex = currentQuestion - 1;
+    if (questionIndex >= 0 && questionIndex < questions.length) {
+      return questions[questionIndex] ?? null;
+    }
+    return null;
+  };
+
+  const currentQuestionData: Question | null = getCurrentQuestion();
 
   return (
-    <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-lg p-8">
-      {loading ? (
-        <div className="py-12 text-center">
-          <div className="inline-block w-12 h-12 border-4 border-umi-light-blue border-t-umi-blue-dark rounded-full animate-spin mb-4"></div>
-          <p className="text-lg text-gray-600">
-            {stage === "questions"
-              ? "Analizando tus respuestas..."
-              : diagnosticState.status === "sending"
-                ? "Enviando tu diagnóstico personalizado..."
-                : "Preparando tu informe personalizado..."}
-          </p>
+    <div className="max-w-4xl mx-auto p-6">
+      {loading && (
+        <div className="text-center py-12">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-umi-blue-dark mb-4"></div>
+          <p className="text-gray-600">Analizando tus respuestas...</p>
         </div>
-      ) : (
+      )}
+
+      {!loading && (
         <div>
-          {/* Mensaje de estado del diagnóstico */}
-          {diagnosticState.message && (
-            <div
-              className={`p-4 rounded-lg border mb-6 ${
-                diagnosticState.status === "success"
-                  ? "text-green-600 bg-green-50 border-green-200"
-                  : diagnosticState.status === "error"
-                    ? "text-red-600 bg-red-50 border-red-200"
-                    : "text-blue-600 bg-blue-50 border-blue-200"
-              }`}
-            >
+          {/* Mostrar estado del diagnóstico si está en proceso */}
+          {diagnosticState.status !== "idle" && (
+            <div className="mb-6 p-4 rounded-lg border bg-white">
               <div className="flex items-center">
                 {diagnosticState.status === "success" ? (
                   <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24">
@@ -457,9 +439,9 @@ const DiagnosticQuiz = () => {
               <Welcome onStart={() => setStage("questions")} />
             )}
 
-            {stage === "questions" && (
+            {stage === "questions" && currentQuestionData && (
               <QuestionStep
-                question={questions[currentQuestion - 1]}
+                question={currentQuestionData}
                 currentQuestion={currentQuestion}
                 totalQuestions={questions.length}
                 selectedValue={answers[currentQuestion] || null}
@@ -484,11 +466,10 @@ const DiagnosticQuiz = () => {
               <ContactForm
                 onSubmit={handleContactSubmit}
                 isLoading={diagnosticState.status === "sending"}
-                errorMessage={
-                  diagnosticState.status === "error"
-                    ? diagnosticState.message
-                    : undefined
-                }
+                {...(diagnosticState.status === "error" &&
+                diagnosticState.message
+                  ? { errorMessage: diagnosticState.message }
+                  : {})}
               />
             )}
 

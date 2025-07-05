@@ -90,8 +90,9 @@ const ContactSection = () => {
         });
 
         // Opcional: Tracking para analytics
-        if (typeof window !== "undefined" && (window as any).gtag) {
-          (window as any).gtag("event", "form_submit", {
+        if (typeof window !== "undefined" && "gtag" in window) {
+          const gtag = (window as { gtag: (...args: unknown[]) => void }).gtag;
+          gtag("event", "form_submit", {
             event_category: "Contact",
             event_label: formData.need,
           });
@@ -114,22 +115,23 @@ const ContactSection = () => {
     }
   };
 
-  // Función para obtener el color del estado
+  // Función para obtener los colores del estado del formulario
   const getStatusColor = () => {
     switch (formState.status) {
       case "success":
-        return "text-green-600 bg-green-50 border-green-200";
+        return "bg-green-50 border-green-200 text-green-800";
       case "error":
-        return "text-red-600 bg-red-50 border-red-200";
+        return "bg-red-50 border-red-200 text-red-800";
       default:
-        return "";
+        return "bg-blue-50 border-blue-200 text-blue-800";
     }
   };
 
   return (
     <section id="contacto" className="py-20 bg-umi-blue-dark text-white">
       <div className="container-wide">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          {/* Información de contacto */}
           <div>
             <motion.h2
               initial={{ opacity: 0, y: 20 }}
@@ -138,17 +140,20 @@ const ContactSection = () => {
               viewport={{ once: true }}
               className="text-3xl md:text-4xl font-domus font-semibold mb-6"
             >
-              Comienza tu transformación digital
+              ¿Listo para transformar tus datos en{" "}
+              <span className="text-umi-light-blue">ventaja competitiva</span>?
             </motion.h2>
+
             <motion.p
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.2 }}
               viewport={{ once: true }}
-              className="text-xl font-light mb-8"
+              className="text-lg text-gray-300 mb-8 leading-relaxed"
             >
-              Contacta con nuestro equipo para descubrir cómo podemos ayudarte a
-              tomar mejores decisiones a través del análisis de datos.
+              Contáctanos para una consulta personalizada. Analizaremos tu
+              situación actual y te presentaremos un plan de acción específico
+              para tu empresa.
             </motion.p>
 
             <motion.div
@@ -156,81 +161,47 @@ const ContactSection = () => {
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.4 }}
               viewport={{ once: true }}
-              className="space-y-6 mb-8"
+              className="space-y-4"
             >
-              {/* Información de contacto */}
-              {[
-                {
-                  title: "Email",
-                  description: "hola@umiconsulting.co",
-                  icon: (
-                    <path
-                      d="M3 5H21V19H3V5Z M3 5L12 14L21 5"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  ),
-                },
-                {
-                  title: "Teléfono",
-                  description: "+52 667 730 1913",
-                  icon: (
-                    <path
-                      d="M5 4H9L11 9L8.5 10.5C9.5 12.5 11.5 14.5 13.5 15.5L15 13L20 15V19C20 19.5304 19.7893 20.0391 19.4142 20.4142C19.0391 20.7893 18.5304 21 18 21C14.0993 20.763 10.4202 19.1065 7.65683 16.3432C4.8935 13.5798 3.23705 9.90074 3 6C3 5.46957 3.21071 4.96086 3.58579 4.58579C3.96086 4.21071 4.46957 4 5 4"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  ),
-                },
-                {
-                  title: "Horario",
-                  description: "Lunes a Viernes: 9:00 - 18:00",
-                  icon: (
-                    <path
-                      d="M12 6v6l4 2m6-8a9 9 0 11-18 0 9 9 0 0118 0z"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  ),
-                },
-              ].map((item, idx) => (
-                <div key={idx} className="flex items-start space-x-4">
-                  <div className="flex-shrink-0 mt-1">
-                    <svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      {item.icon}
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="font-domus font-semibold mb-1">
-                      {item.title}
-                    </h3>
-                    <p>{item.description}</p>
-                  </div>
-                </div>
-              ))}
-            </motion.div>
+              <div className="flex items-center">
+                <svg
+                  className="w-5 h-5 mr-2 text-umi-light-blue"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span className="text-sm font-medium">
+                  Consulta inicial gratuita de 30 minutos
+                </span>
+              </div>
 
-            {/* Garantía de respuesta */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.6 }}
-              viewport={{ once: true }}
-              className="bg-white/10 backdrop-blur-sm p-4 rounded-lg border border-white/20"
-            >
-              <div className="flex items-center text-white">
+              <div className="flex items-center">
+                <svg
+                  className="w-5 h-5 mr-2 text-umi-light-blue"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span className="text-sm font-medium">
+                  Análisis de tu situación actual sin compromiso
+                </span>
+              </div>
+
+              <div className="flex items-center">
                 <svg
                   className="w-5 h-5 mr-2 text-umi-light-blue"
                   fill="none"

@@ -57,9 +57,8 @@ export class EmailCronManager {
           console.error("❌ Error en cron job:", this.getErrorMessage(error));
         }
       },
-      {
-        timezone: config.timezone,
-      }
+      // Solo incluir timezone si está definido
+      config.timezone ? { timezone: config.timezone } : {}
     );
 
     this.jobs.set(config.name, job);
@@ -102,9 +101,8 @@ export class EmailCronManager {
           );
         }
       },
-      {
-        timezone: config.timezone,
-      }
+      // Solo incluir timezone si está definido
+      config.timezone ? { timezone: config.timezone } : {}
     );
 
     this.jobs.set(config.name, job);
@@ -150,9 +148,8 @@ export class EmailCronManager {
           );
         }
       },
-      {
-        timezone: config.timezone,
-      }
+      // Solo incluir timezone si está definido
+      config.timezone ? { timezone: config.timezone } : {}
     );
 
     this.jobs.set(config.name, job);

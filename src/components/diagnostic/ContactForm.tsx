@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import ProgressBar from "./ProgressBar";
-// import Image from "next/image";
 
 interface ContactFormProps {
   onSubmit: (contactInfo: ContactInfo) => void;
+  isLoading?: boolean;
+  errorMessage?: string;
 }
 
 export interface ContactInfo {
@@ -14,7 +15,11 @@ export interface ContactInfo {
   phone: string;
 }
 
-const ContactForm = ({ onSubmit }: ContactFormProps) => {
+const ContactForm = ({
+  onSubmit,
+  isLoading = false,
+  errorMessage,
+}: ContactFormProps) => {
   const [contactInfo, setContactInfo] = useState<ContactInfo>({
     name: "",
     email: "",
@@ -22,14 +27,47 @@ const ContactForm = ({ onSubmit }: ContactFormProps) => {
     phone: "",
   });
 
+  const [validationErrors, setValidationErrors] = useState<
+    Partial<ContactInfo>
+  >({});
+
+  const validateForm = (): boolean => {
+    const errors: Partial<ContactInfo> = {};
+
+    if (!contactInfo.name.trim()) {
+      errors.name = "El nombre es requerido";
+    }
+
+    if (!contactInfo.email.trim()) {
+      errors.email = "El email es requerido";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactInfo.email)) {
+      errors.email = "Formato de email inválido";
+    }
+
+    if (!contactInfo.company.trim()) {
+      errors.company = "La empresa es requerida";
+    }
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(contactInfo);
+
+    if (validateForm()) {
+      onSubmit(contactInfo);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setContactInfo((prev) => ({ ...prev, [name]: value }));
+
+    // Limpiar error de validación cuando el usuario empiece a escribir
+    if (validationErrors[name as keyof ContactInfo]) {
+      setValidationErrors((prev) => ({ ...prev, [name]: undefined }));
+    }
   };
 
   return (
@@ -64,74 +102,69 @@ const ContactForm = ({ onSubmit }: ContactFormProps) => {
                 1
               </div>
               <div>
-                <h4 className="font-medium mb-1">Diagnóstico completo</h4>
+                <h4 className="font-medium text-gray-900 mb-1">
+                  Análisis detallado personalizado
+                </h4>
                 <p className="text-sm text-gray-600">
-                  Análisis detallado de tu madurez analítica
+                  Diagnóstico completo de tu situación actual con
+                  recomendaciones específicas
                 </p>
               </div>
             </div>
+
             <div className="flex items-start">
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-umi-blue-dark text-white flex items-center justify-center mr-3">
                 2
               </div>
               <div>
-                <h4 className="font-medium mb-1">
-                  Plan de acción personalizado
+                <h4 className="font-medium text-gray-900 mb-1">
+                  Hoja de ruta estratégica
                 </h4>
                 <p className="text-sm text-gray-600">
-                  Pasos concretos para implementar en tu negocio
+                  Plan de acción paso a paso para implementar mejoras en tu
+                  organización
                 </p>
               </div>
             </div>
+
             <div className="flex items-start">
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-umi-blue-dark text-white flex items-center justify-center mr-3">
                 3
               </div>
               <div>
-                <h4 className="font-medium mb-1">Calculadora de ROI</h4>
+                <h4 className="font-medium text-gray-900 mb-1">
+                  Estimación de ROI
+                </h4>
                 <p className="text-sm text-gray-600">
-                  Estimación de impacto financiero potencial
+                  Cálculo del retorno de inversión esperado y tiempo de
+                  implementación
                 </p>
               </div>
             </div>
           </div>
 
-          {/* <div className="bg-gray-50 p-4 rounded-lg">
-            <div className="flex items-center mb-2">
-              <div className="mr-3">
-                <Image
-                  src="/api/placeholder/50/50"
-                  alt="CEO"
-                  width={50}
-                  height={50}
-                  className="rounded-full"
-                />
-              </div>
-              <div>
-                <p className="font-medium">Ana Sofía Martínez</p>
-                <p className="text-xs text-gray-500">
-                  Fundadora, Umi Consultoría
-                </p>
-              </div>
-            </div>
-            <p className="text-sm text-gray-600 italic">
-              <p className="text-sm text-gray-600 italic">
-                &quot;Nuestros clientes que implementaron las recomendaciones de
-                este diagnóstico vieron un aumento promedio del 24% en
-                eficiencia operativa en los primeros 3 meses.&quot;
-              </p>
+          <div className="bg-umi-light-blue-40 p-4 rounded-lg">
+            <p className="text-sm text-umi-blue-dark font-medium">
+              📧 Te enviaremos el informe completo por email en los próximos
+              minutos
             </p>
-          </div> */}
+          </div>
         </div>
 
         <div>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {errorMessage && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-600">{errorMessage}</p>
+              </div>
+            )}
+
             <div>
               <label
                 htmlFor="name"
                 className="block text-sm font-medium text-gray-700 mb-1"
               >
-                Nombre completo
+                Nombre completo *
               </label>
               <input
                 type="text"
@@ -139,10 +172,17 @@ const ContactForm = ({ onSubmit }: ContactFormProps) => {
                 name="name"
                 value={contactInfo.name}
                 onChange={handleChange}
-                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-umi-light-blue focus:border-umi-light-blue"
-                required
-                placeholder="Tu nombre y apellido"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-umi-blue-dark focus:border-transparent ${
+                  validationErrors.name ? "border-red-300" : "border-gray-300"
+                }`}
+                placeholder="Tu nombre completo"
+                disabled={isLoading}
               />
+              {validationErrors.name && (
+                <p className="text-sm text-red-600 mt-1">
+                  {validationErrors.name}
+                </p>
+              )}
             </div>
 
             <div>
@@ -150,7 +190,7 @@ const ContactForm = ({ onSubmit }: ContactFormProps) => {
                 htmlFor="email"
                 className="block text-sm font-medium text-gray-700 mb-1"
               >
-                Email profesional
+                Email profesional *
               </label>
               <input
                 type="email"
@@ -158,10 +198,17 @@ const ContactForm = ({ onSubmit }: ContactFormProps) => {
                 name="email"
                 value={contactInfo.email}
                 onChange={handleChange}
-                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-umi-light-blue focus:border-umi-light-blue"
-                required
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-umi-blue-dark focus:border-transparent ${
+                  validationErrors.email ? "border-red-300" : "border-gray-300"
+                }`}
                 placeholder="tu@empresa.com"
+                disabled={isLoading}
               />
+              {validationErrors.email && (
+                <p className="text-sm text-red-600 mt-1">
+                  {validationErrors.email}
+                </p>
+              )}
             </div>
 
             <div>
@@ -169,7 +216,7 @@ const ContactForm = ({ onSubmit }: ContactFormProps) => {
                 htmlFor="company"
                 className="block text-sm font-medium text-gray-700 mb-1"
               >
-                Nombre de tu empresa
+                Empresa *
               </label>
               <input
                 type="text"
@@ -177,10 +224,19 @@ const ContactForm = ({ onSubmit }: ContactFormProps) => {
                 name="company"
                 value={contactInfo.company}
                 onChange={handleChange}
-                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-umi-light-blue focus:border-umi-light-blue"
-                required
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-umi-blue-dark focus:border-transparent ${
+                  validationErrors.company
+                    ? "border-red-300"
+                    : "border-gray-300"
+                }`}
                 placeholder="Nombre de tu empresa"
+                disabled={isLoading}
               />
+              {validationErrors.company && (
+                <p className="text-sm text-red-600 mt-1">
+                  {validationErrors.company}
+                </p>
+              )}
             </div>
 
             <div>
@@ -188,7 +244,7 @@ const ContactForm = ({ onSubmit }: ContactFormProps) => {
                 htmlFor="phone"
                 className="block text-sm font-medium text-gray-700 mb-1"
               >
-                Teléfono <span className="text-gray-400">(opcional)</span>
+                Teléfono (opcional)
               </label>
               <input
                 type="tel"
@@ -196,54 +252,36 @@ const ContactForm = ({ onSubmit }: ContactFormProps) => {
                 name="phone"
                 value={contactInfo.phone}
                 onChange={handleChange}
-                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-umi-light-blue focus:border-umi-light-blue"
-                placeholder="Para seguimiento personal"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-umi-blue-dark focus:border-transparent"
+                placeholder="+52 123 456 7890"
+                disabled={isLoading}
               />
             </div>
 
-            <div className="pt-4">
-              <button
-                type="submit"
-                className="w-full bg-umi-blue-dark hover:bg-umi-blue-80 text-white font-semibold py-4 px-6 rounded-md transition-colors duration-300 text-lg"
-              >
-                Descargar mi informe personalizado
-              </button>
-              <p className="text-center text-xs text-gray-500 mt-3">
-                Tus datos están seguros. Nunca compartiremos tu información.
-                <br />
-                Ver nuestra{" "}
-                <a href="#" className="underline">
-                  política de privacidad
-                </a>
-                .
-              </p>
-            </div>
+            <button
+              type="submit"
+              disabled={isLoading}
+              className={`w-full py-3 px-4 rounded-lg font-medium text-white transition-colors ${
+                isLoading
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-umi-blue-dark hover:bg-umi-light-blue"
+              }`}
+            >
+              {isLoading ? (
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Enviando diagnóstico...
+                </div>
+              ) : (
+                "Recibir mi diagnóstico personalizado"
+              )}
+            </button>
           </form>
 
-          <div className="mt-6 p-4 border border-gray-200 rounded-lg">
-            <div className="flex items-center text-gray-700">
-              <svg
-                className="w-5 h-5 mr-2 text-green-600"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-9.618 5.04m-.023 7.032A11.955 11.955 0 0112 21.056a11.955 11.955 0 019.618-5.04m-9.618-9.072a3.18 3.18 0 00-.023 0m.023 0a3.18 3.18 0 01-.023 0M12 7.757a3 3 0 00-2.12 5.122 3 3 0 002.12.879 3 3 0 002.12-.879 3 3 0 00-2.12-5.122z"
-                />
-              </svg>
-              <span className="text-sm font-medium">
-                Garantía de satisfacción
-              </span>
-            </div>
-            <p className="text-xs text-gray-600 mt-1">
-              Si no encuentras valor en el informe, te ofrecemos una consultoría
-              gratuita de 30 minutos con nuestros especialistas.
-            </p>
-          </div>
+          <p className="text-xs text-gray-500 mt-4 text-center">
+            Al enviar este formulario aceptas recibir comunicaciones de Umi
+            Consultoría. No compartiremos tu información con terceros.
+          </p>
         </div>
       </div>
     </motion.div>

@@ -6,6 +6,13 @@ import { getEmailService } from "@/lib/email/emailService";
 import { getSequenceManager } from "@/lib/email/sequenceManager";
 import { EmailTemplates } from "@/lib/email/templates";
 
+// Interfaces para type safety
+interface TestRequest {
+  type: string;
+  email?: string;
+  templateName?: string;
+}
+
 // Mantener compatibilidad con función existente
 export async function testEmailSystem(request: NextRequest) {
   try {
@@ -13,8 +20,10 @@ export async function testEmailSystem(request: NextRequest) {
     return await handleTest(type, email);
   } catch (error) {
     console.error("❌ Error en test de email:", error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Error desconocido";
     return NextResponse.json(
-      { error: "Error ejecutando test" },
+      { error: "Error ejecutando test", details: errorMessage },
       { status: 500 }
     );
   }
@@ -23,35 +32,56 @@ export async function testEmailSystem(request: NextRequest) {
 // Nueva función POST para manejar todos los tipos de test
 export async function POST(request: NextRequest) {
   try {
-    const { type, email, templateName, leadData } = await request.json();
-    return await handleTest(type, email, templateName, leadData);
+    const { type, email, templateName }: TestRequest = await request.json();
+    return await handleTest(type, email, templateName);
   } catch (error) {
     console.error("❌ Error en testing:", error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Error desconocido";
     return NextResponse.json(
-      { error: "Error ejecutando test", details: error.message },
+      { error: "Error ejecutando test", details: errorMessage },
       { status: 500 }
     );
   }
 }
 
 // Función unificada para manejar tests
-async function handleTest(
-  type: string,
-  email?: string,
-  templateName?: string,
-  leadData?: any
-) {
+async function handleTest(type: string, email?: string, templateName?: string) {
   switch (type) {
     case "connection":
       return await testConnection();
 
     case "send_test":
+      if (!email) {
+        return NextResponse.json(
+          { error: "Email de destino requerido" },
+          { status: 400 }
+        );
+      }
       return await testSendEmail(email);
 
     case "template_test":
+      if (!email) {
+        return NextResponse.json(
+          { error: "Email de destino requerido" },
+          { status: 400 }
+        );
+      }
+      if (!templateName) {
+        return NextResponse.json(
+          { error: "Nombre de template requerido" },
+          { status: 400 }
+        );
+      }
       return await testTemplate(email, templateName);
 
     case "sequence_test":
+      if (!email) {
+        return NextResponse.json(
+          { error: "Email de destino requerido" },
+          { status: 400 }
+        );
+      }
       return await testSequence(email);
 
     case "system_health":
@@ -74,7 +104,7 @@ async function handleTest(
   }
 }
 
-// Funciones de testing (mismas que antes)
+// Funciones de testing
 async function testConnection() {
   console.log("🔍 Testing conexión de email...");
 
@@ -90,13 +120,6 @@ async function testConnection() {
 }
 
 async function testSendEmail(testEmail: string) {
-  if (!testEmail) {
-    return NextResponse.json(
-      { error: "Email de destino requerido" },
-      { status: 400 }
-    );
-  }
-
   console.log(`📧 Testing envío a: ${testEmail}`);
 
   const emailService = getEmailService();
@@ -112,13 +135,6 @@ async function testSendEmail(testEmail: string) {
 }
 
 async function testTemplate(testEmail: string, templateName: string) {
-  if (!testEmail || !templateName) {
-    return NextResponse.json(
-      { error: "Email y nombre de template requeridos" },
-      { status: 400 }
-    );
-  }
-
   const template = EmailTemplates[templateName as keyof typeof EmailTemplates];
   if (!template) {
     return NextResponse.json(
@@ -180,13 +196,6 @@ async function testTemplate(testEmail: string, templateName: string) {
 }
 
 async function testSequence(testEmail: string) {
-  if (!testEmail) {
-    return NextResponse.json(
-      { error: "Email de destino requerido" },
-      { status: 400 }
-    );
-  }
-
   console.log(`🔄 Testing secuencia para: ${testEmail}`);
 
   const sequenceManager = getSequenceManager();
