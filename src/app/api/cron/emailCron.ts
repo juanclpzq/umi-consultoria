@@ -1,14 +1,30 @@
-// 📅 ARCHIVO: src/lib/cron/emailCron.ts
-// Sistema de Cron Jobs para automatización completa
+// src/app/api/cron/emailCron.ts - Para configurar tareas programadas
+import * as cron from "node-cron";
 
-import cron from "node-cron";
-import { getSequenceManager } from "@/lib/email/sequenceManager";
-import { getEmailService } from "@/lib/email/emailService";
+// Interfaces para tipado fuerte
+interface CronJobConfig {
+  schedule: string;
+  timezone?: string;
+  name: string;
+  description: string;
+}
+
+interface EmailCronMetrics {
+  jobsExecuted: number;
+  lastExecution: Date | null;
+  failedExecutions: number;
+  totalEmailsSent: number;
+}
 
 export class EmailCronManager {
   private static instance: EmailCronManager;
   private jobs: Map<string, cron.ScheduledTask> = new Map();
-  private isProduction = process.env.NODE_ENV === "production";
+  private metrics: EmailCronMetrics = {
+    jobsExecuted: 0,
+    lastExecution: null,
+    failedExecutions: 0,
+    totalEmailsSent: 0,
+  };
 
   static getInstance(): EmailCronManager {
     if (!EmailCronManager.instance) {
@@ -17,210 +33,151 @@ export class EmailCronManager {
     return EmailCronManager.instance;
   }
 
-  // 🚀 INICIALIZAR TODOS LOS CRON JOBS
-  initializeAllJobs() {
-    console.log("🔄 Inicializando sistema de cron jobs...");
-
-    this.scheduleSequenceProcessing();
-    this.scheduleDailyReports();
-    this.scheduleHealthChecks();
-    this.scheduleWeeklyCleanup();
-
-    console.log(`✅ ${this.jobs.size} cron jobs activos`);
-  }
-
-  // 📧 JOB 1: Procesamiento de secuencias (cada 2 horas)
   scheduleSequenceProcessing() {
-    const schedule = this.isProduction ? "0 */2 * * *" : "*/10 * * * *"; // Prod: cada 2h, Dev: cada 10min
+    const config: CronJobConfig = {
+      schedule: "0 9 * * *", // Diario a las 9:00 AM
+      timezone: "America/Mexico_City",
+      name: "daily_sequences",
+      description: "Procesamiento diario de secuencias de email",
+    };
 
     const job = cron.schedule(
-      schedule,
+      config.schedule,
       async () => {
-        console.log("🔄 [CRON] Procesando secuencias automáticas...");
+        console.log("⏰ Ejecutando procesamiento diario de secuencias...");
 
         try {
-          const sequenceManager = getSequenceManager();
-          const results = await sequenceManager.processAllSequences();
+          const response = await fetch("/api/email-system", { method: "GET" });
+          const result = await response.json();
 
-          console.log(
-            `✅ [CRON] Secuencias procesadas: ${results.emailsSent} enviados`
-          );
-
-          // Si hay muchos fallos, alertar
-          if (results.emailsFailed > results.emailsSent * 0.2) {
-            await this.sendCriticalAlert(
-              "Alto número de emails fallidos",
-              results
-            );
-          }
+          this.updateMetrics(true, result.metrics?.emailsSent || 0);
+          console.log("✅ Procesamiento completado:", result);
         } catch (error) {
-          console.error("❌ [CRON] Error en procesamiento:", error);
-          await this.sendCriticalAlert("Error en cron de secuencias", {
-            error: error.message,
-          });
+          this.updateMetrics(false);
+          console.error("❌ Error en cron job:", this.getErrorMessage(error));
         }
       },
       {
-        scheduled: true,
-        timezone: "America/Mexico_City",
+        timezone: config.timezone,
       }
     );
 
-    this.jobs.set("sequence_processing", job);
+    this.jobs.set(config.name, job);
     console.log(
-      `📅 Cron programado: Secuencias ${this.isProduction ? "cada 2 horas" : "cada 10 minutos"}`
+      `📅 Cron job programado: ${config.description} - ${config.schedule}`
     );
   }
 
-  // 📊 JOB 2: Reportes diarios (9:00 AM)
-  scheduleDailyReports() {
+  scheduleWeeklyReport() {
+    const config: CronJobConfig = {
+      schedule: "0 10 * * 1", // Lunes a las 10:00 AM
+      timezone: "America/Mexico_City",
+      name: "weekly_report",
+      description: "Reporte semanal de métricas",
+    };
+
     const job = cron.schedule(
-      "0 9 * * *",
+      config.schedule,
       async () => {
-        console.log("📊 [CRON] Generando reporte diario...");
+        console.log("📊 Generando reporte semanal...");
 
         try {
-          const sequenceManager = getSequenceManager();
-          const emailService = getEmailService();
+          const response = await fetch("/api/email-system", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "get_metrics" }),
+          });
 
-          const sequenceMetrics = sequenceManager.getMetrics();
-          const emailMetrics = emailService.getMetrics();
+          const result = await response.json();
+          console.log("📈 Métricas semanales:", result.metrics);
 
-          // Solo enviar reporte si hay actividad
-          if (sequenceMetrics.emailsSent > 0 || emailMetrics.sent > 0) {
-            await sequenceManager.sendDailyReport();
-            console.log("✅ [CRON] Reporte diario enviado");
-          }
+          this.updateMetrics(true);
+          // Enviar reporte semanal detallado
+          // implementar según necesidades
         } catch (error) {
-          console.error("❌ [CRON] Error en reporte diario:", error);
+          this.updateMetrics(false);
+          console.error(
+            "❌ Error en reporte semanal:",
+            this.getErrorMessage(error)
+          );
         }
       },
       {
-        scheduled: true,
-        timezone: "America/Mexico_City",
+        timezone: config.timezone,
       }
     );
 
-    this.jobs.set("daily_reports", job);
-    console.log("📅 Cron programado: Reportes diarios a las 9:00 AM");
+    this.jobs.set(config.name, job);
+    console.log(
+      `📅 Cron job programado: ${config.description} - ${config.schedule}`
+    );
   }
 
-  // ❤️ JOB 3: Health checks (cada 30 minutos)
-  scheduleHealthChecks() {
+  scheduleHealthCheck() {
+    const config: CronJobConfig = {
+      schedule: "*/30 * * * *", // Cada 30 minutos
+      timezone: "America/Mexico_City",
+      name: "health_check",
+      description: "Verificación de salud del sistema",
+    };
+
     const job = cron.schedule(
-      "*/30 * * * *",
+      config.schedule,
       async () => {
-        console.log("❤️ [CRON] Health check del sistema...");
+        console.log("🔍 Ejecutando health check...");
 
         try {
-          const emailService = getEmailService();
-          const isHealthy = await emailService.testConnection();
+          const response = await fetch("/api/email-test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: "connection" }),
+          });
 
-          if (!isHealthy) {
-            await this.sendCriticalAlert("Sistema de email no responde", {
-              timestamp: new Date().toISOString(),
-              lastHealthCheck: "FAILED",
-            });
+          const result = await response.json();
+
+          if (result.success) {
+            console.log("✅ Sistema de email funcionando correctamente");
+          } else {
+            console.warn("⚠️ Problema detectado en sistema de email");
           }
+
+          this.updateMetrics(result.success);
         } catch (error) {
-          console.error("❌ [CRON] Error en health check:", error);
+          this.updateMetrics(false);
+          console.error(
+            "❌ Error en health check:",
+            this.getErrorMessage(error)
+          );
         }
       },
       {
-        scheduled: true,
-        timezone: "America/Mexico_City",
+        timezone: config.timezone,
       }
     );
 
-    this.jobs.set("health_checks", job);
-    console.log("📅 Cron programado: Health checks cada 30 minutos");
-  }
-
-  // 🧹 JOB 4: Limpieza semanal (domingos 2:00 AM)
-  scheduleWeeklyCleanup() {
-    const job = cron.schedule(
-      "0 2 * * 0",
-      async () => {
-        console.log("🧹 [CRON] Limpieza semanal...");
-
-        try {
-          // Limpiar logs antiguos
-          await this.cleanupOldLogs();
-
-          // Resetear métricas opcionales
-          if (process.env.RESET_WEEKLY_METRICS === "true") {
-            const sequenceManager = getSequenceManager();
-            const emailService = getEmailService();
-
-            sequenceManager.resetMetrics();
-            emailService.resetMetrics();
-            console.log("🧹 [CRON] Métricas reseteadas");
-          }
-        } catch (error) {
-          console.error("❌ [CRON] Error en limpieza:", error);
-        }
-      },
-      {
-        scheduled: true,
-        timezone: "America/Mexico_City",
-      }
+    this.jobs.set(config.name, job);
+    console.log(
+      `📅 Cron job programado: ${config.description} - ${config.schedule}`
     );
-
-    this.jobs.set("weekly_cleanup", job);
-    console.log("📅 Cron programado: Limpieza semanal domingos 2:00 AM");
   }
 
-  // 🚨 ALERTAS CRÍTICAS
-  private async sendCriticalAlert(message: string, data: any) {
-    try {
-      const emailService = getEmailService();
-
-      const alertHtml = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px;">
-          <h2 style="color: #dc2626;">🚨 ALERTA CRÍTICA - Sistema Umi</h2>
-          <p><strong>Fecha:</strong> ${new Date().toLocaleString("es-ES")}</p>
-          <p><strong>Mensaje:</strong> ${message}</p>
-          
-          <div style="background: #fef2f2; padding: 15px; border-radius: 8px; margin: 20px 0;">
-            <h3>Detalles:</h3>
-            <pre style="background: #f3f4f6; padding: 10px; border-radius: 4px; overflow-x: auto;">
-${JSON.stringify(data, null, 2)}
-            </pre>
-          </div>
-          
-          <p>⚠️ <strong>Acción requerida:</strong> Revisar el sistema inmediatamente.</p>
-          
-          <hr style="margin: 20px 0;">
-          <p style="font-size: 12px; color: #666;">Sistema automatizado - Umi Consultoría</p>
-        </div>
-      `;
-
-      await emailService.sendEmail({
-        to: "hola@umiconsulting.co",
-        subject: "🚨 ALERTA CRÍTICA - Sistema de Email",
-        html: alertHtml,
-        priority: "high",
-        campaign: "critical_alert",
-      });
-    } catch (error) {
-      console.error("❌ Error enviando alerta crítica:", error);
-    }
+  startAllJobs() {
+    this.scheduleSequenceProcessing();
+    this.scheduleWeeklyReport();
+    this.scheduleHealthCheck();
+    console.log("🚀 Todos los cron jobs iniciados");
   }
 
-  private async cleanupOldLogs() {
-    // Implementar limpieza de logs antiguos
-    console.log("🧹 Limpiando logs antiguos...");
-    // En producción: eliminar logs > 30 días
-  }
-
-  // 🛑 CONTROL DE JOBS
-  stopJob(jobName: string) {
+  stopJob(jobName: string): boolean {
     const job = this.jobs.get(jobName);
     if (job) {
       job.stop();
       this.jobs.delete(jobName);
       console.log(`🛑 Cron job detenido: ${jobName}`);
+      return true;
     }
+    console.warn(`⚠️ Job no encontrado: ${jobName}`);
+    return false;
   }
 
   stopAllJobs() {
@@ -229,20 +186,63 @@ ${JSON.stringify(data, null, 2)}
       console.log(`🛑 Cron job detenido: ${name}`);
     }
     this.jobs.clear();
+    console.log("🛑 Todos los cron jobs detenidos");
   }
 
   getActiveJobs(): string[] {
     return Array.from(this.jobs.keys());
   }
 
-  getJobStatus() {
-    const status = {};
+  getJobStatus(): Record<string, boolean> {
+    const status: Record<string, boolean> = {};
     for (const [name, job] of this.jobs) {
-      status[name] = {
-        running: job.getStatus() === "scheduled",
-        lastRun: "N/A", // En producción, implementar tracking
-      };
+      // Verificar si el job está activo
+      status[name] = job.getStatus() !== null;
     }
     return status;
   }
+
+  getMetrics(): EmailCronMetrics {
+    return { ...this.metrics };
+  }
+
+  resetMetrics() {
+    this.metrics = {
+      jobsExecuted: 0,
+      lastExecution: null,
+      failedExecutions: 0,
+      totalEmailsSent: 0,
+    };
+    console.log("📊 Métricas de cron jobs reiniciadas");
+  }
+
+  private updateMetrics(success: boolean, emailsSent: number = 0) {
+    this.metrics.lastExecution = new Date();
+
+    if (success) {
+      this.metrics.jobsExecuted++;
+      this.metrics.totalEmailsSent += emailsSent;
+    } else {
+      this.metrics.failedExecutions++;
+    }
+  }
+
+  private getErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return String(error);
+  }
+}
+
+// Función helper para inicializar el sistema de cron jobs
+export function initializeCronJobs() {
+  const cronManager = EmailCronManager.getInstance();
+  cronManager.startAllJobs();
+  return cronManager;
+}
+
+// Función helper para obtener el manager
+export function getCronManager() {
+  return EmailCronManager.getInstance();
 }

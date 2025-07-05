@@ -2,11 +2,7 @@
 // src/lib/email/sequenceManager.ts
 
 import { EmailService, getEmailService } from "./emailService";
-import {
-  EmailTemplates,
-  EmailTemplateData,
-  getTemplateByDay,
-} from "./templates";
+import { EmailTemplates, EmailTemplateData } from "./templates";
 
 export interface Lead {
   id: string;
@@ -41,7 +37,7 @@ export interface SequenceConfig {
     day: number;
     template: keyof typeof EmailTemplates;
     subject: string;
-    priority: "high" | "medium" | "low";
+    priority: "high" | "normal" | "low";
     conditions?: (lead: Lead) => boolean;
   }>;
 }
@@ -54,6 +50,14 @@ export interface SequenceMetrics {
   meetingsScheduled: number;
   conversions: number;
   sequenceCompletions: number;
+}
+
+interface EmailConfig {
+  day: number;
+  template: keyof typeof EmailTemplates;
+  subject: string;
+  priority: "high" | "normal" | "low";
+  conditions?: (lead: Lead) => boolean;
 }
 
 export class SequenceManager {
@@ -98,14 +102,14 @@ export class SequenceManager {
           day: 5,
           template: "day5CaseStudy",
           subject: "📊 Caso real: Empresa como ${company}",
-          priority: "medium",
+          priority: "normal",
           conditions: (lead) => !this.hasRespondedRecently(lead, 5),
         },
         {
           day: 10,
           template: "day10FreeOffer",
           subject: "🎁 Última oportunidad: Implementación gratuita",
-          priority: "medium",
+          priority: "normal",
           conditions: (lead) => !this.hasRespondedRecently(lead, 10),
         },
         {
@@ -257,9 +261,8 @@ export class SequenceManager {
     return applicable;
   }
 
-  private getEmailsToSend(lead: Lead, sequence: SequenceConfig): any[] {
-    const now = new Date();
-    const emailsToSend = [];
+  private getEmailsToSend(lead: Lead, sequence: SequenceConfig): EmailConfig[] {
+    const emailsToSend: EmailConfig[] = [];
 
     for (const emailConfig of sequence.emails) {
       // Verificar si ya se envió este email
@@ -295,7 +298,7 @@ export class SequenceManager {
 
   private async sendSequenceEmail(
     lead: Lead,
-    emailConfig: any,
+    emailConfig: EmailConfig,
     sequence: SequenceConfig
   ): Promise<boolean> {
     // Convertir lead a EmailTemplateData
@@ -308,7 +311,7 @@ export class SequenceManager {
       diagnosticData: lead.diagnosticData,
     };
 
-    // Obtener el template function
+    // Obtener la función del template
     const templateFunction = EmailTemplates[emailConfig.template];
     if (!templateFunction) {
       console.error(`❌ Template no encontrado: ${emailConfig.template}`);
@@ -316,12 +319,14 @@ export class SequenceManager {
     }
 
     // Personalizar subject
-    const personalizedSubject = this.personalizeSubject(
-      emailConfig.subject,
-      templateData
+    const personalizedSubject = emailConfig.subject
+      .replace(/\$\{company\}/g, lead.company)
+      .replace(/\$\{name\}/g, lead.name);
+
+    console.log(
+      `📧 Enviando ${emailConfig.template} a ${lead.email} (día ${emailConfig.day})`
     );
 
-    // Enviar email usando el servicio
     return this.emailService.sendWithTemplate(
       templateData,
       templateFunction,
@@ -330,119 +335,29 @@ export class SequenceManager {
         priority: emailConfig.priority,
         campaign: sequence.id,
         leadId: lead.id,
-        sequenceDay: emailConfig.day,
       }
     );
-  }
-
-  // Métodos de utilidad
-  private personalizeSubject(subject: string, data: EmailTemplateData): string {
-    return subject
-      .replace(/\$\{company\}/g, data.contactInfo.company)
-      .replace(/\$\{name\}/g, data.contactInfo.name)
-      .replace(/\$\{level\}/g, data.diagnosticData.level);
-  }
-
-  private calculateDaysSince(date: Date): number {
-    const now = new Date();
-    const diffTime = Math.abs(now.getTime() - date.getTime());
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  }
-
-  private hasResponded(lead: Lead): boolean {
-    return (
-      lead.lastResponse !== undefined && lead.lastResponse > lead.diagnosticDate
-    );
-  }
-
-  private hasRespondedRecently(lead: Lead, days: number): boolean {
-    if (!lead.lastResponse) return false;
-
-    const daysSinceResponse = this.calculateDaysSince(lead.lastResponse);
-    return daysSinceResponse <= days;
   }
 
   private async markEmailSent(
     lead: Lead,
-    emailConfig: any,
+    emailConfig: EmailConfig,
     sequence: SequenceConfig
-  ) {
+  ): Promise<void> {
     const emailKey = `${sequence.id}_day_${emailConfig.day}`;
+    lead.emailsSent.push(emailKey);
 
     // En producción, actualizar en base de datos
-    console.log(`📝 Marcando email enviado: ${lead.email} - ${emailKey}`);
-
-    // Simular actualización (implementar con tu base de datos)
-    /*
-    await db.collection('leads').updateOne(
-      { id: lead.id },
-      { 
-        $push: { emailsSent: emailKey },
-        $set: { 
-          lastEmailSent: new Date(),
-          lastSequenceUpdate: new Date()
-        }
-      }
+    console.log(
+      `✅ Email marcado como enviado: ${emailKey} para ${lead.email}`
     );
-    */
   }
 
-  private async getActiveLeads(): Promise<Lead[]> {
-    // En producción, consultar base de datos real
-    // Por ahora, retornar datos mock para testing
-
-    return [
-      {
-        id: "lead_001",
-        email: "test@ejemplo.com",
-        name: "Juan Pérez",
-        company: "Empresa Test",
-        diagnosticDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), // 3 días atrás
-        meetingScheduled: false,
-        meetingAttended: false,
-        emailsSent: [],
-        sequencePaused: false,
-        diagnosticData: {
-          score: 4,
-          level: "Inicial",
-          primaryChallenge: "Organización de datos",
-          quickWins: [
-            {
-              action: "Dashboard básico",
-              description: "Implementar KPIs principales",
-            },
-          ],
-          estimatedROI: {
-            timeToValue: 30,
-            expectedReturn: 250,
-          },
-        },
-      },
-    ];
-  }
-
-  // Métodos de control
-  async pauseSequenceForLead(
-    leadId: string,
-    reason: string = "manual"
-  ): Promise<boolean> {
+  // Métodos de gestión de leads
+  async pauseSequenceForLead(leadId: string, reason: string): Promise<boolean> {
     try {
+      // En producción, actualizar en base de datos
       console.log(`⏸️ Pausando secuencias para lead ${leadId}: ${reason}`);
-
-      // En producción, actualizar base de datos
-      /*
-      await db.collection('leads').updateOne(
-        { id: leadId },
-        { 
-          $set: { 
-            sequencePaused: true,
-            pauseReason: reason,
-            pausedAt: new Date()
-          }
-        }
-      );
-      */
-
       return true;
     } catch (error) {
       console.error(`❌ Error pausando secuencias para ${leadId}:`, error);
@@ -452,22 +367,8 @@ export class SequenceManager {
 
   async resumeSequenceForLead(leadId: string): Promise<boolean> {
     try {
+      // En producción, actualizar en base de datos
       console.log(`▶️ Reanudando secuencias para lead ${leadId}`);
-
-      // En producción, actualizar base de datos
-      /*
-      await db.collection('leads').updateOne(
-        { id: leadId },
-        { 
-          $unset: { 
-            sequencePaused: "",
-            pauseReason: "",
-            pausedAt: ""
-          }
-        }
-      );
-      */
-
       return true;
     } catch (error) {
       console.error(`❌ Error reanudando secuencias para ${leadId}:`, error);
@@ -477,21 +378,16 @@ export class SequenceManager {
 
   async markLeadAsResponded(
     leadId: string,
-    responseType: "email" | "meeting" | "phone" = "email"
+    responseType: string = "email"
   ): Promise<boolean> {
     try {
-      console.log(
-        `✅ Marcando lead ${leadId} como respondido: ${responseType}`
-      );
-
       this.metrics.responsesReceived++;
 
-      // Pausar secuencias automáticamente cuando responde
-      await this.pauseSequenceForLead(
-        leadId,
-        `client_responded_${responseType}`
-      );
+      if (responseType === "meeting") {
+        this.metrics.meetingsScheduled++;
+      }
 
+      console.log(`✅ Lead ${leadId} marcado como respondido: ${responseType}`);
       return true;
     } catch (error) {
       console.error(`❌ Error marcando respuesta para ${leadId}:`, error);
@@ -499,67 +395,73 @@ export class SequenceManager {
     }
   }
 
-  // Reportes y monitoreo
-  async sendDailyReport() {
+  // Métodos auxiliares
+  private calculateDaysSince(date: Date): number {
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  }
+
+  private hasResponded(lead: Lead): boolean {
+    return lead.lastResponse !== undefined;
+  }
+
+  private hasRespondedRecently(lead: Lead, days: number): boolean {
+    if (!lead.lastResponse) return false;
+    const daysSinceResponse = this.calculateDaysSince(lead.lastResponse);
+    return daysSinceResponse <= days;
+  }
+
+  private async getActiveLeads(): Promise<Lead[]> {
+    // En producción, consultar base de datos
+    // Por ahora retornamos array vacío para testing
+    return [];
+  }
+
+  private async sendDailyReport(): Promise<void> {
     const reportHtml = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px;">
-        <h2 style="color: #223979;">📊 Reporte Diario - Secuencias de Email</h2>
-        <p><strong>Fecha:</strong> ${new Date().toLocaleDateString("es-ES")}</p>
-        
-        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
-          <tr style="background: #f3f4f6;">
-            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Métrica</strong></td>
-            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Valor</strong></td>
-          </tr>
-          <tr>
-            <td style="padding: 10px; border: 1px solid #ddd;">Leads procesados</td>
-            <td style="padding: 10px; border: 1px solid #ddd;">${this.metrics.totalLeads}</td>
-          </tr>
-          <tr>
-            <td style="padding: 10px; border: 1px solid #ddd;">Emails enviados</td>
-            <td style="padding: 10px; border: 1px solid #ddd;">${this.metrics.emailsSent}</td>
-          </tr>
-          <tr>
-            <td style="padding: 10px; border: 1px solid #ddd;">Emails fallidos</td>
-            <td style="padding: 10px; border: 1px solid #ddd;">${this.metrics.emailsFailed}</td>
-          </tr>
-          <tr>
-            <td style="padding: 10px; border: 1px solid #ddd;">Respuestas recibidas</td>
-            <td style="padding: 10px; border: 1px solid #ddd;">${this.metrics.responsesReceived}</td>
-          </tr>
-          <tr>
-            <td style="padding: 10px; border: 1px solid #ddd;">Tasa de éxito</td>
-            <td style="padding: 10px; border: 1px solid #ddd;">${this.calculateSuccessRate()}%</td>
-          </tr>
-        </table>
-        
-        <hr>
-        <p style="font-size: 12px; color: #666;">Sistema automatizado - Umi Consultoría</p>
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #223979;">📊 Reporte Diario - Sistema de Secuencias</h2>
+        <div style="background: #f3f4f6; padding: 20px; border-radius: 8px;">
+          <h3>Métricas del Día</h3>
+          <ul>
+            <li><strong>Emails enviados:</strong> ${this.metrics.emailsSent}</li>
+            <li><strong>Emails fallidos:</strong> ${this.metrics.emailsFailed}</li>
+            <li><strong>Tasa de éxito:</strong> ${this.calculateSuccessRate()}%</li>
+            <li><strong>Respuestas recibidas:</strong> ${this.metrics.responsesReceived}</li>
+          </ul>
+        </div>
       </div>
     `;
 
-    return this.emailService.sendEmail({
+    await this.emailService.sendEmail({
       to: "hola@umiconsulting.co",
-      subject: `📈 Reporte Diario: ${this.metrics.emailsSent} emails enviados`,
+      subject: "📈 Reporte Diario - Sistema de Secuencias",
       html: reportHtml,
       campaign: "daily_report",
     });
   }
 
-  private async sendErrorAlert(error: any) {
+  private async sendErrorAlert(error: unknown): Promise<void> {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack =
+      error instanceof Error ? error.stack : "No stack trace available";
+
     const errorHtml = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px;">
-        <h2 style="color: #ef4444;">🚨 Error en Sistema de Secuencias</h2>
-        <p><strong>Fecha:</strong> ${new Date().toLocaleString("es-ES")}</p>
-        <p><strong>Error:</strong> ${error.message}</p>
-        <pre style="background: #f3f4f6; padding: 15px; border-radius: 5px; overflow-x: auto;">
-${error.stack}
-        </pre>
-        <p style="color: #dc2626;">⚠️ Revisa el sistema inmediatamente.</p>
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #dc2626;">🚨 Error Crítico - Sistema de Secuencias</h2>
+        <div style="background: #fef2f2; padding: 20px; border-radius: 8px; border: 1px solid #fecaca;">
+          <p><strong>Error:</strong> ${errorMessage}</p>
+          <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
+          <pre style="background: #f3f4f4; padding: 10px; border-radius: 5px; overflow-x: auto;">
+${errorStack}
+          </pre>
+          <p style="color: #dc2626;">⚠️ Revisa el sistema inmediatamente.</p>
+        </div>
       </div>
     `;
 
-    return this.emailService.sendEmail({
+    await this.emailService.sendEmail({
       to: "hola@umiconsulting.co",
       subject: "🚨 Error Crítico - Sistema de Secuencias",
       html: errorHtml,

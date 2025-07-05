@@ -1,6 +1,39 @@
-// src/app/api/admin/email-dashboard/route.ts
-// Dashboard administrativo para monitorear el sistema
-export async function getEmailDashboard(request: NextRequest) {
+import { NextRequest, NextResponse } from "next/server";
+import { getSequenceManager } from "@/lib/email/sequenceManager";
+import { getEmailService } from "@/lib/email/emailService";
+
+// Interfaces para type safety
+interface RecentActivity {
+  type: string;
+  email: string;
+  subject?: string;
+  responseType?: string;
+  timestamp: string;
+}
+
+interface DashboardData {
+  overview: {
+    totalLeads: number;
+    emailsSent: number;
+    emailsFailed: number;
+    responseRate: string;
+    conversionRate: string;
+  };
+  sequences: {
+    active: number;
+    paused: number;
+    completed: number;
+  };
+  performance: {
+    deliveryRate: string;
+    avgResponseTime: string;
+    bestPerformingDay: string;
+  };
+  recentActivity: RecentActivity[];
+}
+
+// GET: Obtener datos del dashboard
+export async function GET() {
   try {
     const sequenceManager = getSequenceManager();
     const emailService = getEmailService();
@@ -9,7 +42,7 @@ export async function getEmailDashboard(request: NextRequest) {
     const emailMetrics = emailService.getMetrics();
 
     // Combinar métricas de ambos servicios
-    const dashboardData = {
+    const dashboardData: DashboardData = {
       overview: {
         totalLeads: metrics.totalLeads,
         emailsSent: metrics.emailsSent,
@@ -60,6 +93,39 @@ export async function getEmailDashboard(request: NextRequest) {
   }
 }
 
+// POST: Acciones del dashboard (reset métricas, etc.)
+export async function POST(request: NextRequest) {
+  try {
+    const { action } = await request.json();
+
+    switch (action) {
+      case "reset_metrics":
+        const sequenceManager = getSequenceManager();
+        const emailService = getEmailService();
+
+        sequenceManager.resetMetrics();
+        emailService.resetMetrics();
+
+        return NextResponse.json({
+          success: true,
+          message: "Métricas reiniciadas exitosamente",
+        });
+
+      default:
+        return NextResponse.json(
+          { error: "Acción no válida", validActions: ["reset_metrics"] },
+          { status: 400 }
+        );
+    }
+  } catch (error) {
+    console.error("❌ Error en acción del dashboard:", error);
+    return NextResponse.json(
+      { error: "Error procesando acción" },
+      { status: 500 }
+    );
+  }
+}
+
 // Funciones auxiliares para el dashboard
 async function getActiveSequencesCount(): Promise<number> {
   // En producción, consultar base de datos
@@ -76,7 +142,7 @@ function getDayWithMostResponses(): string {
   return "Martes"; // Mock data
 }
 
-async function getRecentActivity(): Promise<any[]> {
+async function getRecentActivity(): Promise<RecentActivity[]> {
   // En producción, obtener actividad reciente de la base de datos
   return [
     {
