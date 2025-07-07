@@ -214,7 +214,7 @@ export class DiagnosticTrigger {
     for (const emailConfig of emailSequence) {
       // FIX: Solo incluir si es exactamente el día correcto Y no se ha enviado
       if (
-        daysElapsed === emailConfig.day &&
+        daysElapsed >= emailConfig.day &&
         !this.database.wasEmailSent(lead.id, emailConfig.day)
       ) {
         emailsToSend.push(emailConfig);
