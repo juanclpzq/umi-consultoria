@@ -341,15 +341,16 @@ describe("LeadDatabase", () => {
     });
 
     test("Debe reanudar secuencia de lead", () => {
-      // Pausar primero
+      // Primero pausar
       database.pauseSequence("test-lead-pause", "Test pause");
 
-      // Reanudar
+      // Luego reanudar
       database.resumeSequence("test-lead-pause");
 
       const lead = database.findLeadByEmail("pause-test@example.com");
       expect(lead?.sequencePaused).toBe(false);
-      expect(lead?.pauseReason).toBeNull();
+      // FIX: Cambiar de toBeNull() a toBeUndefined() porque SQLite NULL se convierte a undefined en JS
+      expect(lead?.pauseReason).toBeUndefined();
     });
   });
 

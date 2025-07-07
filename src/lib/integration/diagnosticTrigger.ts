@@ -194,6 +194,7 @@ export class DiagnosticTrigger {
   /**
    * Calcular emails que deben enviarse según días transcurridos
    */
+  // En src/lib/integration/diagnosticTrigger.ts
   private calculateEmailsToSend(lead: LeadData): Array<{
     template: string;
     day: number;
@@ -211,7 +212,35 @@ export class DiagnosticTrigger {
     ];
 
     for (const emailConfig of emailSequence) {
-      // Solo incluir si ya debería haberse enviado y no se ha enviado
+      // FIX: Solo incluir si es exactamente el día correcto Y no se ha enviado
+      if (
+        daysElapsed === emailConfig.day &&
+        !this.database.wasEmailSent(lead.id, emailConfig.day)
+      ) {
+        emailsToSend.push(emailConfig);
+      }
+    }
+
+    return emailsToSend;
+  }
+
+  private calculatePendingEmails(lead: LeadData): Array<{
+    template: string;
+    day: number;
+    subject: string;
+  }> {
+    const daysElapsed = this.database.getDaysElapsed(lead.id);
+    const emailsToSend = [];
+
+    const emailSequence = [
+      { day: 0, template: "diagnostic_welcome", subject: "Bienvenida" },
+      { day: 2, template: "diagnostic_followup_1", subject: "Seguimiento 1" },
+      { day: 5, template: "diagnostic_followup_2", subject: "Seguimiento 2" },
+      { day: 10, template: "diagnostic_followup_3", subject: "Seguimiento 3" },
+    ];
+
+    for (const emailConfig of emailSequence) {
+      // Para cron: incluir si ya debería haberse enviado
       if (
         daysElapsed >= emailConfig.day &&
         !this.database.wasEmailSent(lead.id, emailConfig.day)
@@ -269,8 +298,11 @@ export class DiagnosticTrigger {
       let sent = 0;
       let failed = 0;
 
+      console.log(`🔍 Procesando ${pendingLeads.length} leads pendientes`);
+
       for (const lead of pendingLeads) {
-        const emailsToSend = this.calculateEmailsToSend(lead);
+        // FIX: Usar calculatePendingEmails
+        const emailsToSend = this.calculatePendingEmails(lead);
 
         if (emailsToSend.length > 0) {
           processed++;
@@ -285,6 +317,9 @@ export class DiagnosticTrigger {
         }
       }
 
+      console.log(
+        `📊 Resumen: ${processed} procesados, ${sent} enviados, ${failed} fallidos`
+      );
       return { processed, sent, failed };
     } catch (error) {
       console.error("❌ Error en processScheduledEmails:", error);

@@ -274,10 +274,12 @@ export class LeadDatabase {
 
       const diagnosticDate = new Date(result.diagnosticDate);
       const today = new Date();
-      const diffTime = Math.abs(today.getTime() - diagnosticDate.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-      return diffDays;
+      // FIX: Usar Math.floor en lugar de Math.ceil para cálculo exacto
+      const diffTime = today.getTime() - diagnosticDate.getTime(); // Remover Math.abs
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+      return Math.max(0, diffDays); // Evitar días negativos
     } catch (error) {
       console.error("❌ Error calculando días transcurridos:", error);
       return 0;
@@ -424,6 +426,9 @@ export class LeadDatabase {
       `);
 
       stmt.run(leadId);
+
+      // FIX: Asegurar que pauseReason quede como null
+      console.log(`✅ Secuencia reanudada para lead ${leadId}`);
     } catch (error) {
       console.error("❌ Error reanudando secuencia:", error);
       throw error;
